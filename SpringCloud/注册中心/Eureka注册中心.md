@@ -125,6 +125,8 @@ com.netflix.discovery.DiscoveryClient#fetchRegistryFromBackup
 
 都在往this.localRegionApps（AtomicReference原子类）中设置com.netflix.discovery.shared.Applications apps（这个类中存储了app name map、app host map以及securith app host map）之后本Eureka Server会从自己的localRegionApps中存储的服务信息进行注册
 
+**！！！！Eureka集群边缘注册（待研究）！！！！**
+
 ### Eureka缓存机制
 
 Eureka Server 为了提供响应效率，提供了两层的缓存结构，将 Eureka Client 所需要的注册信息，直接存储在缓存结构中。
