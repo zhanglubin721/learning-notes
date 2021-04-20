@@ -21,11 +21,11 @@
 4.隔离：把每个依赖或调用的服务都隔离开来，防止级联失败引起整体服务不可用
 5.降级：服务失败或异常后，返回指定的默认信息
 
-![](D:\learning-notes\SpringCloud\Hystrix\image\20181229222858683.png)
+![](./image/20181229222858683.png)
 
 ## Hystrix 容错流程
 
-![](D:\learning-notes\SpringCloud\Hystrix\image\20181229223445608.png)
+![](./image/20181229223445608.png)
 
 上面有 9 个步骤，下面分别讲解每一步骤：
 
@@ -216,11 +216,11 @@
 
 Hystrix支持线程池隔离和信号量隔离两种，默认为线程池隔离
 
-![](D:\learning-notes\SpringCloud\Hystrix\image\20200720004310681.png)
+![](./image/20200720004310681.png)
 
 ##### 线程池隔离
 
-![](D:\learning-notes\SpringCloud\Hystrix\image\20190226191154671.png)
+![](./image/20190226191154671.png)
 
 如果我们很多业务都依赖于同一个线程池,当其中一个业务因为各种不可控的原因消耗了所有的线程，导致线程池全部占满。
 
@@ -399,7 +399,7 @@ it executes on the calling thread and concurrent requests are limited by the sem
 
 每次调用线程，当前请求通过计数信号量进行限制，当信号大于了最大请求数（maxConcurrentRequests）时，进行限制，调用fallback接口快速返回。
 
-![](D:\learning-notes\SpringCloud\Hystrix\image\20190226191122944.png)
+![](./image/20190226191122944.png)
 
 最重要的是，信号量的调用是同步的，也就是说，每次调用都得阻塞调用方的线程，直到结果返回。这样就导致了无法对访问做超时（只能依靠调用协议超时，无法主动释放）
 
@@ -415,7 +415,7 @@ it executes on a separate thread and concurrent requests are limited by the numb
 
 当HystrixCommand请求后端服务失败数量超过一定比例(默认50%), 断路器会切换到开路状态(Open). 这时所有请求会直接失败而不会发送到后端服务，断路器保持在开路状态一段时间后(默认5秒)，自动切换到半开路状态(HALF-OPEN)，这时会判断下一次请求的返回情况， 如果请求成功, 断路器切回闭路状态(CLOSED)，否则重新切换到开路状态(OPEN)
 
-![](D:\learning-notes\SpringCloud\Hystrix\image\20200719195749470.png)
+![](./image/20200719195749470.png)
 
 ```Java
 @HystrixCommand(

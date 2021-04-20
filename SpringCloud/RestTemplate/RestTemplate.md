@@ -8,7 +8,7 @@ RestTemplate 是从 Spring3.0 开始支持的一个 HTTP 请求工具，它提�
 
 在 RestTemplate 中，和 GET 请求相关的方法有如下几个：
 
-![](D:\learning-notes\SpringCloud\RestTemplate\image\5d00dbf10001676611540246.jpg)
+![](./image/5d00dbf10001676611540246.jpg)
 
 这里的方法一共有两类，getForEntity（获得实体） 和 getForObject（获得对象），每一类有三个重载方法，下面我们分别予以介绍。
 
@@ -56,7 +56,7 @@ public class UseHelloController {
 
 来看 getForEntity 方法。第一个参数是 url ，url 中有一个占位符 {1} ,如果有多个占位符分别用 {2} 、 {3} … 去表示，第二个参数是接口返回的数据类型，最后是一个可变长度的参数，用来给占位符填值。在返回的 ResponseEntity 中，可以获取响应头中的信息，其中 getStatusCode 方法用来获取响应状态码， getBody 方法用来获取响应数据， getHeaders 方法用来获取响应头，在浏览器中访问该接口，结果如下：
 
-![](D:\learning-notes\SpringCloud\RestTemplate\image\5d00dbfc000166bf09240302.jpg)
+![](./image/5d00dbfc000166bf09240302.jpg)
 
 当然，这里参数的传递除了这一种方式之外，还有另外两种方式，也就是 getForEntity 方法的另外两个重载方法。
 
@@ -93,7 +93,7 @@ String s = restTemplate.getForObject(uri, String.class);
 
 ## POST 请求
 
-![](D:\learning-notes\SpringCloud\RestTemplate\image\5d00dc050001e88012780366.jpg)
+![](./image/5d00dc050001e88012780366.jpg)
 
 POST请求只比GET请求多一个postForLocation方法
 
