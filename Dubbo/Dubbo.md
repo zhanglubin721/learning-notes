@@ -907,8 +907,8 @@ flag通过header拿到标志位。
 #### (1)解码反序列化request
 
 当(flag & -128) == 0为false时，进入else执行体，在服务端进行操作。
-if ((flag & 32) != 0)在判断是否时一个心跳事件，心跳事件时为了检测连接是否断开以备重连。
-if (req.isHeartbeat())判断是否时一个心跳事件，else if (req.isEvent())判断是否时一个事件
+if ((flag & 32) != 0)在判断是否是一个心跳事件，心跳事件时为了检测连接是否断开以备重连。
+if (req.isHeartbeat())判断是否是一个心跳事件，else if (req.isEvent())判断是否是一个事件
 排除了这两个之后就是真正的request。
 inv拿到request相关参数，inv.decode()进行解码和反序列化。
 调用DecodeableRpcInvocation的decode()方法如下
@@ -973,9 +973,9 @@ public Object decode(Channel channel, InputStream input) throws IOException {
 #### (2)解码反序列化response
 
 当(flag & -128) == 0为true时，进入if执行体，在客户端进行操作。
-if ((flag & 32) != 0)在判断是否时一个心跳事件，心跳事件时为了检测连接是否断开以备重连。
+if ((flag & 32) != 0)在判断是否是一个心跳事件，心跳事件是为了检测连接是否断开以备重连。
 status从header拿到状态码，如果不等于20，直接进入else执行错误信息写入到responseres.setErrorMessage()。
-if (req.isHeartbeat()判断是否时一个心跳事件，else if (req.isEvent()判断是否时一个事件
+if (req.isHeartbeat()判断是否是一个心跳事件，else if (req.isEvent()判断是否是一个事件
 排除了这两个之后就是真正的response。
 result拿到response相关参数，result .decode()进行解码和反序列化。
 调用DecodeableRpcResult的decode()方法如下
