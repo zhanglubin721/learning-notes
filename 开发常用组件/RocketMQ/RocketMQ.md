@@ -1,8 +1,49 @@
 # RocketMQ
 
-# RocketMQ(1)-架构原理
+随着使用越来越多的队列和虚拟主题，**ActiveMQ IO模块遇到了瓶颈**。我们尽力通过节流，断路器或降级来解决此问题，但效果不佳。因此，我们那时开始关注流行的消息传递解决方案Kafka。不幸的是，Kafka不能满足我们的要求，特别是在低延迟和高可靠性方面。
 
 RocketMQ是阿里开源的分布式消息中间件，跟其它中间件相比，RocketMQ的特点是**纯JAVA实现**；**集群和HA实现相对简单**；**在发生宕机和其它故障时消息丢失率更低**。
+
+目前主流的MQ主要是Rocketmq、kafka、Rabbitmq，Rocketmq相比于Rabbitmq、kafka具有主要优势特性有：
+ •       支持事务型消息（消息发送和DB操作保持两方的最终一致性，rabbitmq和kafka不支持）
+ •       支持结合rocketmq的多个系统之间数据最终一致性（多方事务，二方事务是前提）
+ •       支持18个级别的延迟消息（rabbitmq和kafka不支持）
+ •       支持指定次数和时间间隔的失败消息重发（kafka不支持，rabbitmq需要手动确认）
+ •       支持consumer端tag过滤，减少不必要的网络传输（rabbitmq和kafka不支持）
+ •       支持重复消费（rabbitmq不支持，kafka支持）
+
+支持发布/订阅（Pub/Sub）和点对点（P2P）消息模型
+能够保证严格的消息顺序，在一个队列中可靠的先进先出（FIFO）和严格的顺序传递
+提供丰富的消息拉取模式，支持拉（pull）和推（push）两种消息模式
+单一队列百万消息的堆积能力，亿级消息堆积能力
+支持多种消息协议，如 JMS、MQTT 等
+分布式高可用的部署架构,满足至少一次消息传递语义
+
+![img](image/12619159-ebd12b24d5ae33d9.png)
+
+**RocketMQ的特点和优势（可跳过看三的整合代码）**
+
+- 削峰填谷（主要解决诸如秒杀、抢红包、企业开门红等大型活动时皆会带来较高的流量脉冲，或因没做相应的保护而导致系统超负荷甚至崩溃，或因限制太过导致请求大量失败而影响用户体验，海量消息堆积能力强）
+
+  ![img](image/aHR0cHM6Ly9iYnNtYXguaWthZmFuLmNvbS9zdGF0aWMvTDNCeWIzaDVMMmgwZEhCekwybHRaekl3TVRndVkyNWliRzluY3k1amIyMHZZbXh2Wnk4eE16RXhOamd4THpJd01Ua3dPQzh4TXpFeE5qZ3hMVEl3TVRrd09ERTNNVFF4TURRNE1qSTRMVEU0TmpVME9UWTBPREF1Y0c1bi5qcGc)
+
+  - 异步解耦（高可用松耦合架构设计，对高依赖的项目之间进行解耦，当下游系统出现宕机，不会影响上游系统的正常运行，或者雪崩）
+
+    ![L3Byb3h5L2h0dHBzL2ltZzIwMTguY25ibG9ncy5jb20vYmxvZy8xMzExNjgxLzIwMTkwOC8xMzExNjgxLTIwMTkwODE3MTQxMTAxODI0LTY4MTkxNDMxLnBuZw==.jpg](image/L3Byb3h5L2h0dHBzL2ltZzIwMTguY25ibG9ncy5jb20vYmxvZy8xMzExNjgxLzIwMTkwOC8xMzExNjgxLTIwMTkwODE3MTQxMTAxODI0LTY4MTkxNDMxLnBuZw==.jpg)
+
+    ![img](image/aHR0cHM6Ly9iYnNtYXguaWthZmFuLmNvbS9zdGF0aWMvTDNCeWIzaDVMMmgwZEhCekwybHRaekl3TVRndVkyNWliRzluY3k1amIyMHZZbXh2Wnk4eE16RXhOamd4THpJd01Ua3dPQzh4TXpFeE5qZ3hMVEl3TVRrd09ERTNNVFF4TVRBeE9ESTBMVFk0TVRreE5ETXhMbkJ1Wnc9PS5qcGc)
+
+    顺序消息（顺序消息即保证消息的先进先出，比如证券交易过程时间优先原则，交易系统中的订单创建、支付、退款等流程，航班中的旅客登机消息处理等）
+
+    ![img](image/aHR0cHM6Ly9iYnNtYXguaWthZmFuLmNvbS9zdGF0aWMvTDNCeWIzaDVMMmgwZEhCekwybHRaekl3TVRndVkyNWliRzluY3k1amIyMHZZbXh2Wnk4eE16RXhOamd4THpJd01Ua3dPQzh4TXpFeE5qZ3hMVEl3TVRrd09ERTNNVFF4TURJMU16STFMVGsyTWprMk5ESXpPUzV3Ym1jPS5qcGc)
+
+    分布式事务消息（确保数据的最终一致性，大量引入 MQ 的分布式事务，既可以实现系统之间的解耦，又可以保证最终的数据一致性，减少系统间的交互）
+
+    - ![img](image/aHR0cHM6Ly9iYnNtYXguaWthZmFuLmNvbS9zdGF0aWMvTDNCeWIzaDVMMmgwZEhCekwybHRaekl3TVRndVkyNWliRzluY3k1amIyMHZZbXh2Wnk4eE16RXhOamd4THpJd01Ua3dPQzh4TXpFeE5qZ3hMVEl3TVRrd09ERTNNVFF4TmpFME5UTXhMVGt6TWpZM09URTFNeTV3Ym1jPS5qcGc)
+
+     
+
+# RocketMQ-架构原理
 
 ## 一、RocketMQ专业术语
 
@@ -190,3 +231,378 @@ NameServer可以看作是RocketMQ的注册中心，它管理两部分数据：�
 [2、RocketMQ nameserver、broker之间的关系](https://blog.csdn.net/linyaogai/article/details/77876078)
 
 [3、RocketMQ-NameServer](https://www.jianshu.com/p/3d8d594d9161)
+
+# RocketMQ-实际使用
+
+
+
+## RocketMQ环境安装
+
+参考我另外一篇文档 windows本地安装部署RocketMQ
+
+## SpringBoot环境中使用RocketMQ
+
+SpringBoot 入门：https://www.cnblogs.com/SimpleWu/p/10027237.html
+SpringBoot 常用start:https://www.cnblogs.com/SimpleWu/p/9798146.html
+
+项目基于之前搭建 SpringCloud搭建Nacos项目 增加RocketMQ功能，项目搭建参考 https://blog.csdn.net/zxl646801924/article/details/103984191
+
+当前项目环境版本为:
+
+- SpringBoot 2.2.2.RELEASE
+- RocketMQ 4.7.0
+
+```xml
+<!-- rocketmq -->
+<dependency>
+    <groupId>org.apache.rocketmq</groupId>
+    <artifactId>rocketmq-client</artifactId>
+    <version>4.7.0</version>
+</dependency>
+```
+
+### MQ生产者配置
+
+mq生产者项目 boot-order-service 端口号 8802
+
+配置文件配置：
+
+```properties
+spring.application.name=boot-order-service
+server.port=8802
+ 
+# nacos配置地址
+nacos.config.server-addr=127.0.0.1:8848
+# nacos注册地址
+nacos.discovery.server-addr=127.0.0.1:8848
+ 
+spring.jackson.date-format=yyyy-MM-dd HH:mm:ss
+spring.jackson.time-zone=GMT+8
+ 
+# 是否开启自动配置
+rocketmq.producer.isOnOff=on
+# 发送同一类消息设置为同一个group，保证唯一默认不需要设置，rocketmq会使用ip@pid（pid代表jvm名字）作为唯一标识
+rocketmq.producer.groupName=${spring.application.name}
+# mq的nameserver地址
+rocketmq.producer.namesrvAddr=127.0.0.1:9876
+# 消息最大长度 默认 1024 * 4 (4M)
+rocketmq.producer.maxMessageSize = 4096
+# 发送消息超时时间，默认 3000
+rocketmq.producer.sendMsgTimeOut=3000
+# 发送消息失败重试次数，默认2
+rocketmq.producer.retryTimesWhenSendFailed=2
+```
+
+新增一个 MQProducerConfigure 配置类，用来初始化MQ生产者
+
+```java
+package com.lockie.cloudorder.rocketmq;
+ 
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.client.producer.DefaultMQProducer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+ 
+/**
+ * @author: lockie
+ * @Date: 2020/4/21 10:28
+ * @Description: mq生产者配置
+ */
+@Getter
+@Setter
+@ToString
+@Configuration
+@ConfigurationProperties(prefix = "rocketmq.producer")
+public class MQProducerConfigure {
+    public static final Logger LOGGER = LoggerFactory.getLogger(MQProducerConfigure.class);
+ 
+    private String groupName;
+    private String namesrvAddr;
+    // 消息最大值
+    private Integer maxMessageSize;
+    // 消息发送超时时间
+    private Integer sendMsgTimeOut;
+    // 失败重试次数
+    private Integer retryTimesWhenSendFailed;
+ 
+    /**
+     * mq 生成者配置
+     * @return
+     * @throws MQClientException
+     */
+    @Bean
+    @ConditionalOnProperty(prefix = "rocketmq.producer", value = "isOnOff", havingValue = "on")
+    public DefaultMQProducer defaultProducer() throws MQClientException {
+        LOGGER.info("defaultProducer 正在创建---------------------------------------");
+        DefaultMQProducer producer = new DefaultMQProducer(groupName);
+        producer.setNamesrvAddr(namesrvAddr);
+        producer.setVipChannelEnabled(false);
+        producer.setMaxMessageSize(maxMessageSize);
+        producer.setSendMsgTimeout(sendMsgTimeOut);
+        producer.setRetryTimesWhenSendAsyncFailed(retryTimesWhenSendFailed);
+        producer.start();
+        LOGGER.info("rocketmq producer server 开启成功----------------------------------");
+        return producer;
+    }
+}
+```
+
+### MQ消费者配置
+
+mq消费者项目 boot-user-service 端口号 8801
+
+增加配置参数
+
+```properties
+spring.application.name=boot-user-service
+server.port=8801
+ 
+# nacos配置地址
+nacos.config.server-addr=127.0.0.1:8848
+# nacos注册地址
+nacos.discovery.server-addr=127.0.0.1:8848
+ 
+spring.jackson.date-format=yyyy-MM-dd HH:mm:ss
+spring.jackson.time-zone=GMT+8
+ 
+# 是否开启自动配置
+rocketmq.consumer.isOnOff=on
+# 发送同一类消息设置为同一个group，保证唯一默认不需要设置，rocketmq会使用ip@pid（pid代表jvm名字）作为唯一标识
+rocketmq.consumer.groupName=${spring.application.name}
+# mq的nameserver地址
+rocketmq.consumer.namesrvAddr=127.0.0.1:9876
+# 消费者订阅的主题topic和tags（*标识订阅该主题下所有的tags），格式: topic~tag1||tag2||tags3;
+rocketmq.consumer.topics=TestTopic~TestTag;TestTopic~HelloTag;HelloTopic~HelloTag;MyTopic~*
+# 消费者线程数据量
+rocketmq.consumer.consumeThreadMin=5
+rocketmq.consumer.consumeThreadMax=32
+# 设置一次消费信心的条数，默认1
+rocketmq.consumer.consumeMessageBatchMaxSize=1
+```
+
+新建一个MQConsumerConfigure 类用来初始化MQ消费者
+
+```java
+package com.lockie.bootuser.rocketmq;
+ 
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
+import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+ 
+/**
+ * @author: lockie
+ * @Date: 2020/4/21 10:28
+ * @Description: mq消费者配置
+ */
+@Getter
+@Setter
+@ToString
+@Configuration
+@ConfigurationProperties(prefix = "rocketmq.consumer")
+public class MQConsumerConfigure {
+    public static final Logger LOGGER = LoggerFactory.getLogger(MQConsumerConfigure.class);
+ 
+    private String groupName;
+    private String namesrvAddr;
+    private String topics;
+    // 消费者线程数据量
+    private Integer consumeThreadMin;
+    private Integer consumeThreadMax;
+    private Integer consumeMessageBatchMaxSize;
+ 
+    @Autowired
+    private MQConsumeMsgListenerProcessor consumeMsgListenerProcessor;
+    /**
+     * mq 消费者配置
+     * @return
+     * @throws MQClientException
+     */
+    @Bean
+    @ConditionalOnProperty(prefix = "rocketmq.consumer", value = "isOnOff", havingValue = "on")
+    public DefaultMQPushConsumer defaultConsumer() throws MQClientException {
+        LOGGER.info("defaultConsumer 正在创建---------------------------------------");
+        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer(groupName);
+        consumer.setNamesrvAddr(namesrvAddr);
+        consumer.setConsumeThreadMin(consumeThreadMin);
+        consumer.setConsumeThreadMax(consumeThreadMax);
+        consumer.setConsumeMessageBatchMaxSize(consumeMessageBatchMaxSize);
+        // 设置监听
+        consumer.registerMessageListener(consumeMsgListenerProcessor);
+ 
+        /**
+         * 设置consumer第一次启动是从队列头部开始还是队列尾部开始
+         * 如果不是第一次启动，那么按照上次消费的位置继续消费
+         */
+        consumer.setConsumeFromWhere(ConsumeFromWhere.CONSUME_FROM_LAST_OFFSET);
+        /**
+         * 设置消费模型，集群还是广播，默认为集群
+         */
+//        consumer.setMessageModel(MessageModel.CLUSTERING);
+ 
+        try {
+            // 设置该消费者订阅的主题和tag，如果订阅该主题下的所有tag，则使用*,
+            String[] topicArr = topics.split(";");
+            for (String tag : topicArr) {
+                String[] tagArr = tag.split("~");
+                consumer.subscribe(tagArr[0], tagArr[1]);
+            }
+            consumer.start();
+            LOGGER.info("consumer 创建成功 groupName={}, topics={}, namesrvAddr={}",groupName,topics,namesrvAddr);
+        } catch (MQClientException e) {
+            LOGGER.error("consumer 创建失败!");
+        }
+        return consumer;
+    }
+}
+```
+
+这个只是初始化操作，实际对消费者对消息处理放在 consumer.registerMessageListener(consumeMsgListenerProcessor); 这个监听类里面了，实际接收消息，处理消息都放在监听类里
+
+新建一个监听类处理消息
+
+```java
+package com.lockie.bootuser.rocketmq;
+ 
+import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyContext;
+import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
+import org.apache.rocketmq.client.consumer.listener.MessageListenerConcurrently;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
+ 
+import java.util.List;
+ 
+/**
+ * @author: lockie
+ * @Date: 2020/4/21 11:05
+ * @Description: 消费者监听
+ */
+@Component
+public class MQConsumeMsgListenerProcessor implements MessageListenerConcurrently {
+    public static final Logger LOGGER = LoggerFactory.getLogger(MQConsumeMsgListenerProcessor.class);
+ 
+ 
+    /**
+     * 默认msg里只有一条消息，可以通过设置consumeMessageBatchMaxSize参数来批量接收消息
+     * 不要抛异常，如果没有return CONSUME_SUCCESS ，consumer会重新消费该消息，直到return CONSUME_SUCCESS
+     * @param msgList
+     * @param consumeConcurrentlyContext
+     * @return
+     */
+    @Override
+    public ConsumeConcurrentlyStatus consumeMessage(List<MessageExt> msgList, ConsumeConcurrentlyContext consumeConcurrentlyContext) {
+        if (CollectionUtils.isEmpty(msgList)) {
+            LOGGER.info("MQ接收消息为空，直接返回成功");
+            return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+        }
+        MessageExt messageExt = msgList.get(0);
+        LOGGER.info("MQ接收到的消息为：" + messageExt.toString());
+        try {
+            String topic = messageExt.getTopic();
+            String tags = messageExt.getTags();
+            String body = new String(messageExt.getBody(), "utf-8");
+ 
+            LOGGER.info("MQ消息topic={}, tags={}, 消息内容={}", topic,tags,body);
+        } catch (Exception e) {
+            LOGGER.error("获取MQ消息内容异常{}",e);
+        }
+        // TODO 处理业务逻辑
+        return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+    }
+}
+```
+
+### 测试消息发送接收
+
+生产者 boot-order-service 新建一个controller，再新建一个send方法，发送消息
+
+```java
+
+package com.lockie.cloudorder.rocketmq;
+ 
+import com.lockie.cloudorder.model.Results;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.rocketmq.client.exception.MQBrokerException;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.client.producer.DefaultMQProducer;
+import org.apache.rocketmq.client.producer.SendResult;
+import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.remoting.exception.RemotingException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+ 
+/**
+ * @author: lockie
+ * @Date: 2020/4/21 11:17
+ * @Description:
+ */
+@RestController
+@RequestMapping("/mqProducer")
+public class MQProducerController {
+    public static final Logger LOGGER = LoggerFactory.getLogger(MQProducerController.class);
+ 
+    @Autowired
+    DefaultMQProducer defaultMQProducer;
+ 
+    /**
+     * 发送简单的MQ消息
+     * @param msg
+     * @return
+     */
+    @GetMapping("/send")
+    public Results send(String msg) throws InterruptedException, RemotingException, MQClientException, MQBrokerException {
+        if (StringUtils.isEmpty(msg)) {
+            return new Results().succeed();
+        }
+        LOGGER.info("发送MQ消息内容：" + msg);
+        Message sendMsg = new Message("TestTopic", "TestTag", msg.getBytes());
+        // 默认3秒超时
+        SendResult sendResult = defaultMQProducer.send(sendMsg);
+        LOGGER.info("消息发送响应：" + sendResult.toString());
+        return new Results().succeed(sendResult);
+    }
+ 
+}
+```
+
+浏览器请求发送send接口 http://127.0.0.1:8802/mqProducer/send?msg=hello
+
+![img](image/20200421162425115.png)
+
+修改topic和tags为MyTopic，MyTags，再发送一次
+
+![img](image/20200421162738340.png)
+
+我们进入rocketmq控制台查看
+
+![img](image/2020042116375652.png)
+
+ 
+
+![img](image/20200421163923534.png)
+
+项目代码地址：https://github.com/LockieZou/springcloud-nacos-demo
+
