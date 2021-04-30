@@ -675,3 +675,127 @@ sentinel down-after-milliseconds mymaster 5000
 因为若某一节点宕机后，不会实现自动重启。最稳健实现高可用的做法 :
 
 **redis主从复制+哨兵机制(监控、提醒、自动故障迁移)+keepalived(自动重启)，若重启多次仍不成功，可以通过邮件短信等方式通知。**
+
+## Redis实现分布式锁
+
+```redis
+SETNX()
+//setnx接收两个参数key，value。如果key存在，则不做任何操作，返回0，若key不存在，则设置成功，返回1。
+EXPIRE()
+
+redis> EXISTS job                # job 不存在
+(integer) 0
+
+redis> SETNX job "programmer"    # job 设置成功
+(integer) 1
+
+redis> SETNX job "code-farmer"   # 尝试覆盖 job ，失败
+(integer) 0
+
+redis> GET job                   # 没有被覆盖
+"programmer"
+```
+
+### 1.1、为什么要使用分布式锁
+
+   我们在开发应用的时候，如果需要对某一个共享变量进行多线程同步访问的时候，可以使用我们学到的Java多线程的18般武艺进行处理，并且可以完美的运行，毫无Bug！
+
+   注意这是单机应用，也就是所有的请求都会分配到当前服务器的JVM内部，然后映射为操作系统的线程进行处理！而这个共享变量只是在这个JVM内部的一块内存空间！
+
+   后来业务发展，需要做集群，一个应用需要部署到几台机器上然后做负载均衡，大致如下图：
+
+ 
+
+   上图可以看到，变量A存在JVM1、JVM2、JVM3三个JVM内存中（这个变量A主要体现是在一个类中的一个成员变量，是一个有状态的对象，例如：UserController控制器中的一个整形类型的成员变量），如果不加任何控制的话，变量A同时都会在JVM分配一块内存，三个请求发过来同时对这个变量操作，显然结果是不对的！即使不是同时发过来，三个请求分别操作三个不同JVM内存区域的数据，变量A之间不存在共享，也不具有可见性，处理的结果也是不对的！
+
+   如果我们业务中确实存在这个场景的话，我们就需要一种方法解决这个问题！
+
+   为了保证一个方法或属性在高并发情况下的同一时间只能被同一个线程执行，在传统单体应用单机部署的情况下，可以使用Java并发处理相关的API(如ReentrantLock或Synchronized)进行互斥控制。在单机环境中，Java中提供了很多并发处理相关的API。但是，随着业务发展的需要，原单体单机部署的系统被演化成分布式集群系统后，由于分布式系统多线程、多进程并且分布在不同机器上，这将使原单机部署情况下的并发控制锁策略失效，单纯的Java API并不能提供分布式锁的能力。为了解决这个问题就需要一种跨JVM的互斥机制来控制共享资源的访问，这就是分布式锁要解决的问题！
+
+**总结：单机环境下我的锁在分布式场景下无法使用，因为相同的代码运行在多个jvm中**
+
+### 1.2、分布式锁应具备哪些条件
+
+   在分析分布式锁的三种实现方式之前，先了解一下分布式锁应该具备哪些条件：
+
+   1、在分布式系统环境下，一个方法在同一时间只能被一个机器的一个线程执行；
+
+   2、高可用的获取锁与释放锁；
+
+   3、高性能的获取锁与释放锁；
+
+   4、具备可重入特性；
+
+   5、具备锁失效机制，防止死锁；
+
+   6、具备非阻塞锁特性，即没有获取到锁将直接返回获取锁失败。
+
+### 1.3、分布式锁的三种实现方式
+
+   目前几乎很多大型网站及应用都是分布式部署的，分布式场景中的数据一致性问题一直是一个比较重要的话题。分布式的CAP理论告诉我们“任何一个分布式系统都无法同时满足一致性（Consistency）、可用性（Availability）和分区容错性（Partition tolerance），最多只能同时满足两项。”所以，很多系统在设计之初就要对这三者做出取舍。在互联网领域的绝大多数的场景中，都需要牺牲强一致性来换取系统的高可用性，系统往往只需要保证“最终一致性”，只要这个最终时间是在用户可以接受的范围内即可。
+
+   在很多场景中，我们为了保证数据的最终一致性，需要很多的技术方案来支持，比如分布式事务、分布式锁等。有的时候，我们需要保证一个方法在同一时间内只能被同一个线程执行。
+
+  1、基于数据库实现分布式锁；
+
+  2、基于缓存（Redis等）实现分布式锁；
+
+  3、基于Zookeeper实现分布式锁；
+
+   尽管有这三种方案，但是不同的业务也要根据自己的情况进行选型，他们之间没有最好只有更适合！
+
+```java
+//运行需要加锁的方法前尝试加锁
+public Boolean tryLock(String key, String value) {
+    //Boolean result = stringRedisTemplate.boundValueOps(key).setIfAbsent(value, 30, TimeUnit.SECONDS);
+    //return result == null ? false : result;
+    if (stringRedisTemplate.opsForValue().setIfAbsent(key, value)) { //如果没有这个key则插入并返回1，如果已存在则返回0
+        return true;
+    }
+    //下面的部分我也没看懂，感觉可以不要
+    //证明该key已存在
+    String currentValue = stringRedisTemplate.opsForValue().get(key);
+    if (StringUtils.isNotEmpty(currentValue) 
+        && Long.valueOf(currentValue) < System.currentTimeMillis()) {
+        //获取上一个锁的时间 如果高并发的情况可能会出现已经被修改的问题  所以多一次判断保证线程的安全
+        String oldValue = stringRedisTemplate.opsForValue().getAndSet(key, value);
+        if (StringUtils.isNotEmpty(oldValue) && oldValue.equals(currentValue)) {
+            return true;
+        }
+    }
+    return false;
+}
+//用时间time作为锁依据，如果加锁成功，则可以在解锁的时候对事件进行判断，如果相同，则代表是自己加的锁，才能进行解锁操作
+public void unlock(String key, String value) {
+    String currentValue = stringRedisTemplate.opsForValue().get(key);
+    try {
+        if (StringUtils.isNotEmpty(currentValue) && currentValue.equals(value)) {
+            stringRedisTemplate.opsForValue().getOperations().delete(key);
+        }
+    } catch (Exception e) {
+
+    }
+}
+```
+
+### 在实际业务使用中
+
+```java
+if (!redisLock.tryLock(key, String.valueOf(time))) {
+    //未获取分布式锁，返回运行结果
+	return false;
+}
+try {
+    //do something
+    //业务代码
+} catch (Exception e) {
+    e.printStackTrace();
+    //返回运行结果
+	return false;
+} finally {
+	//解锁
+	redisLock.unlock(key, String.valueOf(time));
+}
+return true;
+```
+
