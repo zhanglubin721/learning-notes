@@ -781,6 +781,7 @@ public void unlock(String key, String value) {
 ### 在实际业务使用中
 
 ```java
+//time是加锁解锁的依据
 if (!redisLock.tryLock(key, String.valueOf(time))) {
     //未获取分布式锁，返回运行结果
 	return false;
