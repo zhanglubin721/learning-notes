@@ -1035,10 +1035,10 @@ protected synchronized Class<?> loadClass(String name, boolean resolve) throws C
     if (c == null) {
         try {
             if (parent != null) {
-             //2 没有则调用父类加载器的loadClass()方法；
+             	//2 没有则调用父类加载器的loadClass()方法；
                 c = parent.loadClass(name, false);
             } else {
-            //3 若父类加载器为空，则默认使用启动类加载器作为父加载器；
+            	//3 若父类加载器为空，则默认使用启动类加载器作为父加载器；
                 c = findBootstrapClass0(name);
             }
         } catch (ClassNotFoundException e) {
