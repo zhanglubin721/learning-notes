@@ -165,13 +165,40 @@ insert into SC values('07' , '03' , 98);
 
 6. 查询学过「张三」老师授课的同学的信息
 
+   ```sql
+   select * from student where SId in (
+       select sc.SId from sc where exists(
+           select course.CId from course
+               left join teacher on course.TId = teacher.TId where teacher.Tname = '张三'
+           and sc.CId = course.CId
+       )
+   )
+   ```
+
    
 
-7. 查询没有学全所有课程的同学的信息
+7. 查询没有选全所有课程的同学的信
+
+   ```sql
+   select * from student where not exists(
+       select sc.SId from sc where sc.SId = student.SId
+       group by SId having count(sc.CId) = (select count(*) from course)
+   );
+   ```
 
    
 
 8. 查询至少有一门课与学号为" 01 "的同学所学相同的同学的信息
+
+   ```sql
+   select * from student where exists(
+       select SId from sc 
+       where sc.SId = student.SId 
+         and sc.CId in (select CId from sc where SId = '01') 
+         and sc.SId != '01' 
+       group by sc.SId
+   )
+   ```
 
    
 
