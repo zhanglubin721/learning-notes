@@ -204,21 +204,58 @@ insert into SC values('07' , '03' , 98);
 
 9. 查询和" 01 "号的同学学习的课程   完全相同的其他同学的信息
 
+   ```sql
+   #完全没思路
+   ```
+
    
 
 10. 查询没学过"张三"老师讲授的任一门课程的学生姓名
+
+    ```sql
+    select * from student where not exists(
+        select * from sc
+        where CId in 
+              (select CId from course where TId = (select TId from teacher where Tname = '张三')) 
+          and student.SId = sc.SId
+        group by SId
+    )
+    ```
 
     
 
 11. 查询两门及其以上不及格课程的同学的学号，姓名及其平均成绩
 
+    ```sql
+    select student.*, t1.avg 
+    from student
+        right join (select s.SId, avg(s.score) as avg from sc s where SId in
+        (select SId from sc where score< 60 group by SId having count(score) >= 2) group by s.SId) t1 
+            on student.SId = t1.SId
+    ```
+
     
 
 12. 检索" 01 "课程分数小于 60，按分数降序排列的学生信息
 
+    ```sql
+    select student.*, s.Cid, s.score from student
+        right join sc s on student.SId = s.SId
+    where s.CId = '01' and s.score < 60 order by score desc
+    ```
+
     
 
 13. 按平均成绩从高到低显示所有学生的所有课程的成绩以及平均成绩
+
+    ```sql
+    select sc.SId, sc.CId, sc.score, t1.avg from sc
+        left join
+        (select SId, avg(score) as avg from sc group by SId) t1
+            on sc.SId = t1.SId
+    order by t1.avg desc
+           , t1.SId
+    ```
 
     
 
@@ -230,13 +267,31 @@ insert into SC values('07' , '03' , 98);
 
     要求输出课程号和选修人数，查询结果按人数降序排列，若人数相同，按课程号升序排列
 
+    ```sql
+    select CId
+        , count(SId) as peopleNum
+        , max(score) as max
+        , min(score) as min
+        , sum(case when sc.score>=60 then 1 else 0 end )/count(*) as 及格率
+        , sum(case when sc.score>=70 and sc.score<80 then 1 else 0 end )/count(*)as 中等率
+        , sum(case when sc.score>=80 and sc.score<90 then 1 else 0 end )/count(*)as 优良率
+        , sum(case when sc.score>=90 then 1 else 0 end )/count(*)as 优秀率
+    from sc group by CId
+    ```
+
     
 
 15. 按各科成绩进行排序，并显示排名， Score 重复时保留名次空缺
 
+    ```sql
     
+    ```
 
     15.1 按各科成绩进行排序，并显示排名， Score 重复时合并名次
+
+    ```sql
+    
+    ```
 
     
 
