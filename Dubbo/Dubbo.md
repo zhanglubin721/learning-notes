@@ -743,7 +743,7 @@ IP：服务提供者的地址
 协议的编解码过程：
 ![在这里插入图片描述](image/20181114201248718.png)
 
-### 源码探究
+### 编解码过程源码探究
 
 以明晰编码解码和序列化反序列化为目的探究源码。其实就是如上图所示的协议的编解码过程。
 
@@ -1145,7 +1145,128 @@ Dubbo框架设计一共划分了10个层，最上面的Service层是留给实际
 
 <img src="image/1147548-20170928143227981-1007327667.png" alt="img" style="zoom:80%;" />
 
-**注册/注销服务**
-  服务的注册与注销，是对服务提供方角色而言，那么注册服务与注销服务的时序图，如图所示：
+## Dubbo底层调用过程
 
-<img src="image/1147548-20170928143328137-563026115.png" alt="img" style="zoom:80%;" />
+### Dubbo中的概念URL、Invocation、Invoker、Protocol
+
+**URL：**定义了调用的url如协议、协议、参数等信息
+
+```java
+
+public final class URL implements Serializable {
+    private static final long serialVersionUID = -1985165475234910535L;
+    private final String protocol;
+    private final String username;
+    private final String password;
+    // by default, host to registry
+    private final String host;
+    // by default, port to registry
+    private final int port;
+    private final String path;
+    private final Map<String, String> parameters;
+    // ==== cache ====
+    private volatile transient Map<String, Number> numbers;
+    private volatile transient Map<String, URL> urls;
+    private volatile transient String ip;
+    private volatile transient String full;
+    private volatile transient String identity;
+    private volatile transient String parameter;
+    private volatile transient String string;
+}
+```
+
+**Invocation：**是会话域，它持有调用过程中的变量，比如方法名，参数等。
+
+```java
+public interface Invocation {
+ 
+    String getMethodName();
+ 
+    Class<?>[] getParameterTypes();
+ 
+    Object[] getArguments();
+ 
+    Map<String, String> getAttachments();
+ 
+    String getAttachment(String key);
+ 
+    String getAttachment(String key, String defaultValue);
+ 
+    Invoker<?> getInvoker();
+}
+```
+
+**Invoker：**是实体域，它是 Dubbo 的核心模型，其它模型都向它靠扰，或转换成它，它代表一个可执行体，可向它发起 invoke 调用，它有可能是一个本地的实现，也可能是一个远程的实现，也可能一个集群实现。
+
+```java
+public interface Invoker<T> extends Node {
+    /**
+     * @return service interface.
+     */
+    Class<T> getInterface();
+ 
+    Result invoke(Invocation invocation) throws RpcException;
+}
+```
+
+**Protocol：**是服务域，它是 Invoker 暴露和引用的主功能入口，它负责 Invoker 的生命周期管理。
+
+```java
+@SPI("dubbo")
+public interface Protocol {
+ 
+    int getDefaultPort();
+ 
+    @Adaptive
+    <T> Exporter<T> export(Invoker<T> invoker) throws RpcException;
+    
+    @Adaptive
+    <T> Invoker<T> refer(Class<T> type, URL url) throws RpcException;
+  
+    void destroy();
+}
+```
+
+### 调用过程
+
+服务提供者暴露一个服务的详细过程
+
+![img](image/aHR0cHM6Ly91cGxvYWQtaW1hZ2VzLmppYW5zaHUuaW8vdXBsb2FkX2ltYWdlcy8zMDM4MDgtZTIyNjZmNmMzYTgwNDNhYi5wbmc)
+
+服务消费者消费一个服务的详细过程
+
+![img](image/aHR0cHM6Ly91cGxvYWQtaW1hZ2VzLmppYW5zaHUuaW8vdXBsb2FkX2ltYWdlcy8zMDM4MDgtMDg3ZjY1ZTdmMmJkMGIzYi5wbmc)
+
+
+
+项目启动时，对本项目中所有加了service注解与reference注解的生成proxy代理
+
+默认使用JavassistProxyFactory（java辅助代理工厂）
+
+1 服务消费者调用服务
+
+2 根据调用服务的proxy初始化AbstractProxyInvoker并通过当前会话域的Invocation调用invoke方法
+
+```java
+return new RpcResult(doInvoke(proxy, invocation.getMethodName(), invocation.getParameterTypes(), invocation.getArguments()));
+```
+
+3.服务端过滤器拦截到服务调用请求
+
+5.调用AbstractInvoker的invoke方法
+
+4.根据调用服务的协议调用专属的Invoker（默认Dubbo协议,就是用DubboInvoker）调用doInvoker
+
+```java
+protected Result doInvoke(final Invocation invocation)
+```
+
+###  Dubbo的本地调用
+
+Dubbo是一个远程调用的框架，对于一个服务提供者，暴露了一个接口供外部消费者调用，
+那么对于提供者自己是否可以调用这个接口，需要什么特殊处理吗？
+
+injvm支持本地调用
+使用 Dubbo 本地调用不需做特殊配置，按正常 Dubbo 服务暴露服务即可。
+任一服务在暴露远程服务的同时，也会同时以 injvm 的协议暴露本地服务。
+injvm 是一个伪协议，不会像其他协议那样对外开启端口，只用于本地调用的目的。
