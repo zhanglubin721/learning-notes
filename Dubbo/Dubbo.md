@@ -441,9 +441,6 @@ Registry registry = registryFactory.getRegistry(URL.valueOf("zookeeper://10.20.1
 registry.register(URL.valueOf("memcached://10.20.153.11/com.foo.BarService?category=providers&dynamic=false&application=foo&group=member&loadbalance=consistenthash"));
 ```
 
-
-在客户端引用
-
 在客户端使用 ：
 
 ```xml
@@ -460,8 +457,6 @@ registry.register(URL.valueOf("memcached://10.20.153.11/com.foo.BarService?categ
 			url="memcached://10.20.153.10:11211" />
 ```
 
-
-自定义接口：
 
 自定义接口：
 
