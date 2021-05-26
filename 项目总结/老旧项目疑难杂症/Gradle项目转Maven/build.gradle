@@ -1,0 +1,114 @@
+apply plugin: 'java'
+apply plugin: 'maven'
+apply plugin: 'war'
+apply plugin: 'eclipse-wtp'
+
+def projectName = "uapy"
+group = 'com.union'
+
+sourceCompatibility = 1.7
+
+sourceSets {
+    main {
+        java {
+            srcDir 'src/main/java'
+        }
+        resources {
+            srcDir 'src/main/resources'
+        }
+    }
+}
+
+repositories {
+	
+  maven{
+//	  url  'http://114.242.133.121:8081/nexus/content/groups/public' 
+	  url  'http://maven.aliyun.com/nexus/content/groups/public/' 
+	} 
+	
+	 maven{
+//	  url  'http://114.242.133.121:8081/nexus/content/repositories/thirdparty/' 
+	  url  'http://maven.aliyun.com/nexus/content/repositories/thirdparty/' 
+	} 
+
+
+
+
+}
+
+dependencies {
+
+	compile "junit:junit:4.11"
+	testCompile group: 'org.springframework', name: 'spring-test', version: '3.1.1.RELEASE'
+	compile "log4j:log4j:1.2.17"
+	compile 'org.aspectj:aspectjweaver:1.8.0'
+	/*compile 'jstl:jstl:1.2'
+	compile "com.fasterxml.jackson.core:jackson-databind:2.3.3"
+	compile "com.fasterxml.jackson.core:jackson-core:2.3.3"
+	compile "com.fasterxml.jackson.core:jackson-annotations:2.3.0"
+	compile "org.codehaus.jackson:jackson-core-asl:1.9.8"
+	compile "org.codehaus.jackson:jackson-mapper-asl:1.9.8"*/
+	
+//	compile "javax.persistence:persistence-api:1.0"
+	compile "dom4j:dom4j:1.6.1"
+//	compile "com.github.jsqlparser:jsqlparser:0.9.1"
+//	compile "redis.clients:jedis:2.6.0"
+	
+//	compile "httpclient:httpclient:4.5" 
+//	compile "httpcore:httpcore:4.4.1" 
+//	compile 'commons-httpclient:commons-httpclient:3.1'
+	compile 'org.jsoup:jsoup:1.9.2'
+	
+//	compile "javax.mail:mail:1.4.7"
+//	compile 'com.sun.mail:dsn:1.4.7'
+//	compile 'com.sun.mail:gimap:1.4.7'
+//	compile 'com.sun.mail:imap:1.4.7'
+//	compile 'com.sun.mail:mailapi:1.4.7'
+//	compile 'com.sun.mail:pop3:1.4.7'
+//	compile 'com.sun.mail:smtp:1.4.7'
+	
+	compile 'net.coobird:thumbnailator:0.4.8'
+	
+	compile 'org.mybatis:mybatis:3.1.1'
+	compile 'org.springframework:spring-core:3.1.1.RELEASE'
+	compile 'org.springframework:spring-web:3.1.1.RELEASE'
+	compile 'org.springframework:spring-webmvc:3.1.2.RELEASE'
+	compile 'org.mybatis:mybatis-spring:1.1.1'
+	compile 'org.apache.commons:commons-lang3:3.5'
+	compile 'commons-dbcp:commons-dbcp:1.4'
+	compile 'commons-fileupload:commons-fileupload:1.2.2'
+	compile 'javax.servlet:javax.servlet-api:3.1.0'
+	compile 'net.sf.json-lib:json-lib:2.4:jdk15'
+	compile 'com.sun.jersey:jersey-core:1.18.1'
+	compile 'com.sun.jersey:jersey-client:1.18.1'
+//	compile 'org.apache.poi:poi:3.9'
+//	compile 'org.apache.poi:poi-ooxml-schemas:3.9'
+//	compile 'org.apache.poi:poi-ooxml:3.9'
+//	compile 'org.apache.poi:poi-excelant:3.9'
+//	compile 'org.apache.poi:poi-scratchpad:3.9'
+	compile 'mysql:mysql-connector-java:5.1.18'
+	compile 'net.sf.kxml:kxml2:2.2.2'	
+//	compile 'dic:async-http-client:1.7.1'	
+	//compile 'org.slf4j:slf4j-api:1.7.5'	
+	
+	compile 'com.jcraft:jsch:0.1.54'
+	
+	compile "org.apache.httpcomponents:httpclient:4.5" 
+	compile "org.apache.httpcomponents:httpcore:4.4.1" 
+	compile 'commons-httpclient:commons-httpclient:3.1'
+	compile 'com.ning:async-http-client:1.7.1'
+	compile 'com.github.qcloudsms:qcloudsms:1.0.2'
+	
+	compile 'xom:xom:1.2.5'
+	
+	compile 'org.apache.solr:solr-solrj:7.1.0'
+	compile 'com.aliyun.opensearch:aliyun-sdk-opensearch:3.3.0'
+	compile group: 'cglib', name: 'cglib-nodep', version: '3.2.0'
+	// https://mvnrepository.com/artifact/org.slf4j/slf4j-log4j12
+	compile group: 'org.slf4j', name: 'slf4j-log4j12', version: '1.7.25'
+
+	compile fileTree(dir:'src/main/webapp/WEB-INF/lib',includes:['*jar'])
+	
+}
+
+	 
