@@ -32,7 +32,7 @@ git remote -v
 git push 远程仓库名 分支名 
 ```
 
-![](C:\Users\zhanglubin\Desktop\笔记\Git\image\4355294-4ebbfaeae7d8a87f.webp)
+![](image\4355294-4ebbfaeae7d8a87f.webp)
 
 # 创建本地仓库并同步到远程
 
@@ -57,7 +57,7 @@ git commit -m "说明"
 git push 远程仓库名 分支名
 ```
 
-![](C:\Users\zhanglubin\Desktop\笔记\Git\image\4355294-645ed2ff0f95bf6e.webp)
+![](image\4355294-645ed2ff0f95bf6e.webp)
 
 # 分支与合并
 
