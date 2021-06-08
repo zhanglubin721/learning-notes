@@ -1,438 +1,877 @@
 # JUC并发核心原理
 
+这个图看看就好了，不用太纠结
+
 ![img](image/1454456-20200625122837407-1152312809.png)
 
-## JUC
+## Java JUC简介
 
-### 线程管理
+在 Java 5.0 提供了 java.util.concurrent （简称JUC ）包，在此包中增加了在并发编程中很常用的实用工具类，用于定义类似于线程的自定义子系统，包括线程池、异步 IO 和轻量级任务框架。提供可调的、灵活的线程池。还提供了设计用于多线程上下文中的 Collection 实现等。
 
-- 线程池相关类
-  - Executor、Executors、ExecutorService
-  - 常用的线程池：FixedThreadPool、CachedThreadPool、ScheduledThreadPool、SingleThreadExecutor
-- 能获取子线程的运行结果
-  - Callable、Future、FutureTask
+## 内存可见性 、volatile关键字
 
-### 并发流程管理
+### 内存可见性
 
-- CountDwonLatch、CyclicBarrier、Semaphore、Condition
+内存可见性（Memory Visibility）是指当某个线程正在使用对象状态而另一个线程在同时修改该状态，需要确保当一个线程修改了对象状态后，其他线程能够看到发生的状态变化。
+可见性错误是指当读操作与写操作在不同的线程中执行时，我们无法确保执行读操作的线程能适时地看到其他线程写入的值，有时甚至是根本不可能的事情。
+我们可以通过同步来保证对象被安全地发布。除此之外我们也可以使用一种更加轻量级的 volatile变量。
 
-### 实现线程安全
+### volatile 关键字
 
-- 互斥同步(锁)
-  - Synchronzied、及工具类Vector、Collections
-  - Lock接口的相关类：ReentrantLock、读写锁
-- 非互斥同(原子类)
-  - 原子基本类型、引用类型、原子升级、累加器
-- 并发容器
-  - ConcurrentHashMap、CopyOnWriteArrayList、BlockingQueue
-- 无同步与不可变方案
-  - final关键字、ThreadLocal栈封闭
+Java 提供了一种稍弱的同步机制，即 volatile 变量，用来确保将变量的更新操作通知到其他线程。可以将 volatile 看做一个轻量级的锁，但是又与锁有些不同：
+
+对于多线程，不是一种互斥关系
+不能保证变量状态的“原子性操作”
+- 原子性操作解释
+例如 i++; 这个操作，它不是一个原子性操作，在实际执行时需要三步操作“读-改-写”：
+
+```java
+int temp = i;
+temp = temp + 1;
+i = temp; 
+```
+
+**示例代码**
+
+```java
+public class TestVolatile {
+	
+	public static void main(String[] args) {
+		ThreadDemo td = new ThreadDemo();
+		new Thread(td).start();
+		
+		while(true){
+			if(td.isFlag()){
+				System.out.println("------------------");
+				break;
+			}
+		}
+		
+	}
+
+}
+
+class ThreadDemo implements Runnable {
+
+	private volatile boolean flag = false;
+
+	@Override
+	public void run() {
+		
+		try {
+			Thread.sleep(200);
+		} catch (InterruptedException e) {
+		}
+
+		flag = true;
+		
+		System.out.println("flag=" + isFlag());
+
+	}
+
+	public boolean isFlag() {
+		return flag;
+	}
+
+}
+```
+
+## CAS算法、原子变量
+
+### CAS算法
+
+- CAS (Compare-And-Swap) 是一种硬件对并发的支持，针对多处理器操作而设计的处理器中的一种特殊指令，用于管理对共享数据的并发访问。
+- CAS 是一种无锁的非阻塞算法的实现。
+- CAS 包含了 3 个操作数：需要读写的内存值 V、进行比较的值 A、拟写入的新值 B
+- 当且仅当 V 的值等于 A 时，CAS 通过原子方式用新值 B 来更新 V 的值，否则不会执行任何操作。
+
+**模拟CAS算法**
+
+```java
+public class TestCompareAndSwap {
+
+	public static void main(String[] args) {
+		final CompareAndSwap cas = new CompareAndSwap();
+		
+		for (int i = 0; i < 10; i++) {
+			new Thread(new Runnable() {
+				
+				@Override
+				public void run() {
+					int expectedValue = cas.get();
+					boolean b = cas.compareAndSet(expectedValue, (int)(Math.random() * 101));
+					System.out.println(b);
+				}
+			}).start();
+		}
+	}
+}
+
+class CompareAndSwap{
+	private int value;
+	
+	//获取内存值
+	public synchronized int get(){
+		return value;
+	}
+	
+	//比较
+	public synchronized int compareAndSwap(int expectedValue, int newValue){
+		int oldValue = value;
+		
+		if(oldValue == expectedValue){
+			this.value = newValue;
+		}
+		
+		return oldValue;
+	}
+	
+	//设置
+	public synchronized boolean compareAndSet(int expectedValue, int newValue){
+		return expectedValue == compareAndSwap(expectedValue, newValue);
+	}
+}
+```
+
+### 原子变量
+
+- 类的小工具包，支持在单个变量上解除锁的线程安全编程。事实上，此包中的类可将 volatile 值、字段和数组元素的概念扩展到那些也提供原子条件更新操作的。
+
+- 类 AtomicBoolean、AtomicInteger、AtomicLong 和 AtomicReference 的实例各自提供对相应类型单个变量的访问和更新。每个类也为该类型提供适当的实用工具方法。
+
+- AtomicIntegerArray、AtomicLongArray 和 AtomicReferenceArray 类进一步扩展了原子操作，对这些类型的数组提供了支持。这些类在为其数组元素提供 volatile 访问语义方面也引人注目，这对于普通数组来说是不受支持的。
+
+- 核心方法：boolean compareAndSet(expectedValue, updateValue)
+
+- java.util.concurrent.atomic 包下提供了一些原子操作的常用类
+
+  AtomicBoolean 、AtomicInteger 、AtomicLong 、 AtomicReference
+
+  AtomicIntegerArray 、AtomicLongArray
+
+  AtomicMarkableReference
+
+  AtomicReferenceArray
+
+  AtomicStampedReference
+
+**示例代码**
+
+```java
+import java.util.concurrent.atomic.AtomicInteger;
+
+public class TestAtomicDemo {
+
+	public static void main(String[] args) {
+		AtomicDemo ad = new AtomicDemo();
+		
+		for (int i = 0; i < 10; i++) {
+			new Thread(ad).start();
+		}
+	}
+	
+}
+
+class AtomicDemo implements Runnable{
+	
+//	private volatile int serialNumber = 0;
+	
+	private AtomicInteger serialNumber = new AtomicInteger(0);
+
+	@Override
+	public void run() {
+		
+		try {
+			Thread.sleep(200);
+		} catch (InterruptedException e) {
+		}
+		
+		System.out.println(getSerialNumber());
+	}
+	
+	public int getSerialNumber(){
+		return serialNumber.getAndIncrement(); // 原子执行自增1操作
+	}
+}
+```
+
+## ConcurrentHashMap 锁分段机制
+
+- Java 5.0 在 java.util.concurrent 包中提供了多种并发容器类来改进同步容器的性能。
+- ConcurrentHashMap 同步容器类是Java 5 增加的一个线程安全的哈希表。对与多线程的操作，介于 HashMap 与 Hashtable 之间。内部采用“锁分段”机制替代 Hashtable 的独占锁。进而提高性能。
+- 此包还提供了设计用于多线程上下文中的 Collection 实现：ConcurrentHashMap、ConcurrentSkipListMap、ConcurrentSkipListSet、CopyOnWriteArrayList 和CopyOnWriteArraySet。当期望许多线程访问一个给定 collection 时，ConcurrentHashMap 通常优于同步的 HashMap，ConcurrentSkipListMap 通常优于同步的 TreeMap。当期望的读数和遍历远远大于列表的更新数时，CopyOnWriteArrayList 优于同步的 ArrayList。
+
+**示例代码**
+
+```java
+import java.util.Iterator;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+/*
+ * CopyOnWriteArrayList/CopyOnWriteArraySet : “写入并复制”
+ * 注意：添加操作多时，效率低，因为每次添加时都会进行复制，开销非常的大。并发迭代操作多时可以选择。
+ */
+public class TestCopyOnWriteArrayList {
+
+	public static void main(String[] args) {
+		HelloThread ht = new HelloThread();
+		
+		for (int i = 0; i < 10; i++) {
+			new Thread(ht).start();
+		}
+	}
+}
+
+class HelloThread implements Runnable{
+	
+//	private static List<String> list = Collections.synchronizedList(new ArrayList<String>());
+	
+	private static CopyOnWriteArrayList<String> list = new CopyOnWriteArrayList<>();
+	
+	static{
+		list.add("AA");
+		list.add("BB");
+		list.add("CC");
+	}
+
+	@Override
+	public void run() {
+		Iterator<String> it = list.iterator();
+		
+		while(it.hasNext()){
+			System.out.println(it.next());
+			
+			list.add("AA");
+		}
+	}
+}
+```
+
+## CountDownLatch 闭锁
+
+- Java 5.0 在 java.util.concurrent 包中提供了多种并发容器类来改进同步容器的性能。
+- CountDownLatch 是一个同步辅助类，在完成一组正在其他线程中执行的操作之前，它允许一个或多个线程一直等待。
+- 闭锁可以延迟线程的进度直到其到达终止状态，闭锁可以用来确保某些活动直到其他活动都完成才继续执行：
+
+1. 确保某个计算在其需要的所有资源都被初始化之后才继续执行;
+2. 确保某个服务在其依赖的所有其他服务都已经启动之后才启动;
+3. 等待直到某个操作所有参与者都准备就绪再继续执行。
+
+**示例程序**
+
+```java
+import java.util.concurrent.CountDownLatch;
+
+/**
+ * CountDownLatch：闭锁，在完成某些运算时，只有其他所有线程的运算全部完成，当前运算才继续执行
+ */
+public class TestCountDownLatch {
+
+    public static void main(String[] agrs) {
+        CountDownLatch latch = new CountDownLatch(5); // 5表示有5个线程
+        LatchDemo ld = new LatchDemo(latch);
+
+        long start = System.currentTimeMillis();
+
+        for (int i = 0; i < 5; i++) {
+            new Thread(ld).start();
+        }
+
+        try {
+            latch.await(); // 等待
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        long end = System.currentTimeMillis();
+
+        System.out.println("耗费时间为：" + (end - start) + "ms");
+    }
+
+}
+
+class LatchDemo implements Runnable {
+    private CountDownLatch latch;
+
+    public LatchDemo(CountDownLatch latch) {
+        this.latch = latch;
+    }
+
+    @Override
+    public void run() {
+        try {
+            for (int i = 0; i < 50000; i++) {
+                if (i % 2 == 0) {
+                    System.out.println(i);
+                }
+            }
+        } finally { // 必须执行的操作
+            latch.countDown();
+        }
+    }
+}
+```
+
+## Callable 接口
+
+- Java 5.0 在 java.util.concurrent 提供了一个新的创建执行线程的方式：Callable 接口
+- Callable 接口类似于 Runnable，两者都是为那些其实例可能被另一个线程执行的类设计的。但是 Runnable 不会返回结果，并且无法抛出经过检查的异常。
+- Callable 需要依赖FutureTask ，FutureTask 也可以用作闭锁。
+
+**示例程序**
+
+```java
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
+
+/**
+ * 一、创建执行线程的方式三：实现Callable接口。相较于实现Runnable接口的方式，方法可以有返回值，并且可以抛出异常
+ * 二、执行Callable方式，需要FutureTask实现类的支持，用于接受运算结果。FutureTask是Future接口的实现类
+ */
+public class TestCallable {
+
+    public static void main(String[] args) {
+        ThreadDemo td = new ThreadDemo();
+
+        // 1.执行Callable方式，需要FutureTask实现类的支持，用于接受运算结果
+        FutureTask<Integer> result = new FutureTask<>(td);
+        new Thread(result).start();
+        // 2.接收线程运算后的结果
+        try {
+            Integer sum = result.get(); // FutureTask可用于闭锁
+            System.out.println(sum);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+        }
+    }
+
+}
+
+class ThreadDemo implements Callable<Integer> {
+
+    @Override
+    public Integer call() throws Exception {
+        int sum = 0;
+        for (int i = 0; i <= 100; i++) {
+            sum += i;
+        }
+        return sum;
+    }
+}
+```
+
+## Lock 同步锁、Condition 控制线程通信、线程按序交替
+
+### 显示锁 Lock
+
+- 在 Java 5.0 之前，协调共享对象的访问时可以使用的机制只有 synchronized 和 volatile 。Java 5.0 后增加了一些新的机制，但并不是一种替代内置锁的方法，而是当内置锁不适用时，作为一种可选择的高级功能。
+- ReentrantLock 实现了 Lock 接口，并提供了与synchronized 相同的互斥性和内存可见性。但相较于synchronized 提供了更高的处理锁的灵活性。
+
+**示例代码**
+
+```java
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+/*
+ * 一、用于解决多线程安全问题的方式：
+ * 
+ * synchronized:隐式锁
+ * 1. 同步代码块
+ * 2. 同步方法
+ * 
+ * jdk 1.5 后：
+ * 3. 同步锁 Lock
+ * 注意：是一个显示锁，需要通过 lock() 方法上锁，必须通过 unlock() 方法进行释放锁
+ */
+public class TestLock {
+	
+	public static void main(String[] args) {
+		Ticket ticket = new Ticket();
+		
+		new Thread(ticket, "1号窗口").start();
+		new Thread(ticket, "2号窗口").start();
+		new Thread(ticket, "3号窗口").start();
+	}
+}
+
+class Ticket implements Runnable{	
+	private int tick = 100;
+	
+	private Lock lock = new ReentrantLock();
+
+	@Override
+	public void run() {
+		while(true){
+			
+			lock.lock(); //上锁
+			
+			try{
+				if(tick > 0){
+					try {
+						Thread.sleep(200);
+					} catch (InterruptedException e) {
+					}
+					
+					System.out.println(Thread.currentThread().getName() + " 完成售票，余票为：" + --tick);
+				}
+			}finally{
+				lock.unlock(); //释放锁
+			}
+		}
+	}
+}
+```
+
+### Condition 控制线程通信
+
+- Condition 接口描述了可能会与锁有关联的条件变量。这些变量在用法上与使用 Object.wait 访问的隐式监视器类似，但提供了更强大的功能。需要特别指出的是，单个 Lock 可能与多个 Condition 对象关联。为了避免兼容性问题，Condition 方法的名称与对应的 Object 版本中的不同。
+- 在 Condition 对象中，与 wait、notify 和 notifyAll 方法对应的分别是await、signal 和 signalAll。
+- Condition 实例实质上被绑定到一个锁上。要为特定 Lock 实例获得Condition 实例，请使用其 newCondition() 方法。
+
+### 线程按序交替
+
+Lock和Condition结合应用以实现线程按序交替。
+
+**案例：**
+
+编写一个程序，开启 3 个线程，这三个线程的 ID 分别为A、B、C，每个线程将自己的 ID 在屏幕上打印 10 遍，要求输出的结果必须按顺序显示。如：ABCABCABC…… 依次递归。
+
+```java
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+public class TestABCAlternate {
+
+    public static void main(String[] agrs) {
+        AlternateDemo ad = new AlternateDemo();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                for (int i = 0; i < 10; i++) {
+                    ad.loopA();
+                }
+            }
+        }, "A").start();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                for (int i = 0; i < 10; i++) {
+                    ad.loopB();
+                }
+            }
+        }, "B").start();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                for (int i = 0; i < 10; i++) {
+                    ad.loopC();
+                }
+            }
+        }, "C").start();
+    }
+
+}
+
+class AlternateDemo {
+    private int number = 1; // 当前正在执行的线程标记
+    private Lock lock = new ReentrantLock();
+    private Condition condition1 = lock.newCondition();
+    private Condition condition2 = lock.newCondition();
+    private Condition condition3 = lock.newCondition();
+
+    public void loopA() {
+        lock.lock();
+        try {
+            // 1.判断
+            if (number != 1) {
+                condition1.await();
+            }
+            // 2.打印
+            System.out.print(Thread.currentThread().getName());
+            // 3.唤醒
+            number = 2;
+            condition2.signal();
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public void loopB() {
+        lock.lock();
+        try {
+            if (number != 2) {
+                try {
+                    condition2.await();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+            System.out.print(Thread.currentThread().getName());
+            number = 3;
+            condition3.signal();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public void loopC() {
+        lock.lock();
+        try {
+            if (number != 3) {
+                try {
+                    condition3.await();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+            System.out.print(Thread.currentThread().getName());
+            number = 1;
+            condition1.signal();
+        } finally {
+            lock.unlock();
+        }
+    }
+}
+```
+
+## ReadWriteLock 读写锁
+
+- ReadWriteLock 维护了一对相关的锁，一个用于只读操作，另一个用于写入操作。只要没有 writer，读取锁可以由多个 reader 线程同时保持。写入锁是独占的。
+- ReadWriteLock 读取操作通常不会改变共享资源，但执行写入操作时，必须独占方式来获取锁。对于读取操作占多数的数据结构。 ReadWriteLock 能提供比独占锁更高的并发性。而对于只读的数据结构，其中包含的不变性可以完全不需要考虑加锁操作。
+
+**示例代码**
+
+```java
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+/*
+ * 1. ReadWriteLock : 读写锁
+ * 
+ * 写写/读写 需要“互斥”
+ * 读读 不需要互斥
+ * 
+ */
+public class TestReadWriteLock {
+
+	public static void main(String[] args) {
+		ReadWriteLockDemo rw = new ReadWriteLockDemo();
+		
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				rw.set((int)(Math.random() * 101));
+			}
+		}, "Write:").start();
+		
+		for (int i = 0; i < 100; i++) {
+			new Thread(new Runnable() {
+				
+				@Override
+				public void run() {
+					rw.get();
+				}
+			}).start();
+		}
+	}
+}
+
+class ReadWriteLockDemo{
+	private int number = 0;
+	
+	private ReadWriteLock lock = new ReentrantReadWriteLock();
+	
+	//读
+	public void get(){
+		lock.readLock().lock(); //上锁
+		try{
+			System.out.println(Thread.currentThread().getName() + " : " + number);
+		}finally{
+			lock.readLock().unlock(); //释放锁
+		}
+	}
+	
+	//写
+	public void set(int number){
+		lock.writeLock().lock();
+		try{
+			System.out.println(Thread.currentThread().getName());
+			this.number = number;
+		}finally{
+			lock.writeLock().unlock();
+		}
+	}
+}
+```
+
+## 线程八锁
+
+- 一个对象里面如果有多个synchronized方法，某一个时刻内，只要一个线程去调用其中的一个synchronized方法了，其它的线程都只能等待，换句话说，某一个时刻内，只能有唯一一个线程去访问这些synchronized方法。
+- 锁的是当前对象this，被锁定后，其它的线程都不能进入到当前对象的其它的synchronized方法。
+- 加个普通方法后发现和同步锁无关。
+- 换成两个对象后，不是同一把锁了，情况立刻变化。
+- 都换成静态同步方法后，情况又变化。
+
+**总结：**
+
+- 所有的非静态同步方法用的都是同一把锁——实例对象本身，也就是说如果一个实例对象的非静态同步方法获取锁后，该实例对象的其他非静态同步方法必须等待获取锁的方法释放锁后才能获取锁，可是别的实例对象的非静态同步方法因为跟该实例对象的非静态同步方法用的是不同的锁，所以毋须等待该实例对象已获取锁的非静态同步方法释放锁就可以获取他们自己的锁。
+- 所有的静态同步方法用的也是同一把锁——类对象本身，这两把锁是两个不同的对象，所以静态同步方法与非静态同步方法之间是不会有竞态条件的。但是一旦一个静态同步方法获取锁后，其他的静态同步方法都必须等待该方法释放锁后才能获取锁，而不管是同一个实例对象的静态同步方法之间，还是不同的实例对象的静态同步方法之间，只要它们同一个类的实例对象！
 
 ## 线程池
 
-### 使用线程池的作用好处
-
-- 降低资源消耗
-  - 重复利用已创建的线程降低线程创建和销毁造成的消耗
-- 提高响应速度
-  - 任务到达，可以不需要等到线程创建就能立即执行
-- 提高线程的可管理性
-  - 使用线程池可以进行统一的分配，调优和监控
-
-### 线程池的参数
-
-- corePoolSize、maximumPoolSize、keepAliveTime、workQueue、threadFactory、handler
-- 图示
-  - 
-
-### 常用线程池的创建与规则
-
-- 线程添加规则
-  - 1.如果线程数量小于corePoolSize，即使工作线程处于空闲状态，也会创建一个新线程来运行新任务，创建方法是使用threadFactory
-  - 2.如果线程数量大于corePoolSize但小于maximumPoolSize，则将任务放入队列
-  - 3.如果workQueue队列已满，并且线程数量小于maxPoolSize，则开辟一个非核心新线程来运行任务
-  - 4.如果队列已满，并且线程数大于或等于maxPoolSize，则拒绝该任务，执行handler
-  - 图示(分别与3个参数比较)
-    - 
-- 常用线程池
-  - newFixedThreadPool
-    - 创建固定大小的线程池，使用无界队列会发生OOM
-  - newSingleThreadExecutor
-    - 创建一个单线程的线程池，线程数为1
-  - newCachedThreadPool
-    - 创建一个可缓存的线程池，60s会回收部分空闲的线程。采用直接交付的队列 SynchronousQueue ，队列容量为0，来一个创建一个线程
-  - newScheduledThreadPool
-    - 创建一个大小无限的线程池。此线程池支持定时以及周期性执行任务的需求
-- 如何设置初始化线程池的大小？
-  - 可根据线程池中的线程
-    处理任务的不同进行分别估计
-    - CPU 密集型任务
-      - 大量的运算，无阻塞
-        通常 CPU 利用率很高
-        应配置尽可能少的线程数量
-        设置为 CPU 核数 + 1
-    - IO 密集型任务
-      - 这类任务有大量 IO 操作
-        伴随着大量线程被阻塞
-        有利于并行提高CPU利用率
-        配置更多数量： CPU 核心数 * 2
-- 使用线程池的注意事项
-  - 1.避免任务堆积(无界队列会OOM)、2.避免线程数过多(cachePool直接交付队列)、3.排查线程泄露
-
-### 线程池的状态和常用方法
-
-- 线程池的状态
-  - RUNNING(接受并处理任务中)、
-    SHUTDOWN(不接受新任务但处理排队任务)、
-    STOP(不接受新任务 也不处理排队任务 并中断正在进行的任务)、
-    TIDYING、TEMINATED(运行完成)
-- 线程池停止
-  - shutdown
-    - 通知有序停止，先前提交的任务务会执行
-  - shutdownNow
-    - 尝试立即停止，忽略队列里等待的任务
-
-### 线程池的源码解析
-
-- 线程池的组成
-  - 1.线程池管理器
-    2.工作线程
-    3.任务队列：无界、有界、直接交付队列
-    4.任务接口Task
-- Executor家族
-  - Executor顶层接口，只有一个execute方法
-  - ExecutorService继承了Executor，增加了一些新的方法，比如shutdown拥有了初步管理线程池的功能方法
-  - Executors工具类，来创建，类似Collections
-- 线程池实现任务复用的原理
-  - 线程池对线程作了包装，不需要启动线程，不需要重复start线程，只是调用已有线程固定数量的线程来跑传进来的任务run方法
-  - 添加工作线程
-    - 4步：1. 获取线程池状态、4.判断是否进入任务队列 、3.根据状态检测是否增加工作线程、4.执行拒绝handler
-  - 重复利用线程执行不同的任务
-
-### 面试题
-
-- 为什么要使用线程池？
-- 如何使用线程池？
-- 线程池有哪些核心参数？
-- 初始化线程池的大小的如何算？
-- shutdown 和 shutdownNow 有什么区别？
-
-## ThreadLocal
-
-### ThreadLocal的作用好处
-
-- 为每个线程提供存储自身独立的局部变量，实现线程间隔离
-- 即：达到线程安全，不需要加锁节省开销，减少参数传递
-
-### ThreadLocal的使用场景
-
-- 1.每个线程需要一个独享的对象，如 线程不安全的工具类，(线程隔离)
-- 2.每个线程内需要保存全局变量，如 拦截器中的用户信息参数，让不同方法直接使用，避免参数传递过多，(局部变量安全，参数传递）
-
-### ThreadLocal的实现原理
-
-- 每个 Thread 维护着一个 ThreadLocalMap 的引用；ThreadLocalMap 是 ThreadLocal 的内部类，用 Entry 来进行存储；key就对应一个个ThreadLocal
-- get方法：取出当前线程的ThreadLocalMap，然后调用map.getEntry方法，把ThreadLocal作为key参数传入，取出对应的value
-- set方法：往 ThreadLocalMap 设置ThreadLocal对应值
-  initalValue方法：延迟加载，get的时候设置初始化
-- 图示
-  - 
+- 第四种获取线程的方法：线程池，一个 ExecutorService，它使用可能的几个池线程之一执行每个提交的任务，通常使用 Executors 工厂方法配置。
+- 线程池可以解决两个不同问题：由于减少了每个任务调用的开销，它们通常可以在执行大量异步任务时提供增强的性能，并且还可以提供绑定和管理资源（包括执行任务集时使用的线程）的方法。每个 ThreadPoolExecutor 还维护着一些基本的统计数据，如完成的任务数。
+- 为了便于跨大量上下文使用，此类提供了很多可调整的参数和扩展钩子 (hook)。但是，强烈建议程序员使用较为方便的 Executors 工厂方法 
+
+1. Executors.newCachedThreadPool()（无界线程池，可以进行自动线程回收）
+2. Executors.newFixedThreadPool(int)（固定大小线程池）
+3. Executors.newSingleThreadExecutor()（单个后台线程）
+
+它们均为大多数使用场景预定义了设置。
+
+**示例代码**
+
+```java
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
+/*
+ * 一、线程池：提供了一个线程队列，队列中保存着所有等待状态的线程。避免了创建与销毁额外开销，提高了响应的速度。
+ * 
+ * 二、线程池的体系结构：
+ * 	java.util.concurrent.Executor : 负责线程的使用与调度的根接口
+ * 		|--**ExecutorService 子接口: 线程池的主要接口
+ * 			|--ThreadPoolExecutor 线程池的实现类
+ * 			|--ScheduledExecutorService 子接口：负责线程的调度
+ * 				|--ScheduledThreadPoolExecutor ：继承 ThreadPoolExecutor， 实现 ScheduledExecutorService
+ * 
+ * 三、工具类 : Executors 
+ * ExecutorService newFixedThreadPool() : 创建固定大小的线程池
+ * ExecutorService newCachedThreadPool() : 缓存线程池，线程池的数量不固定，可以根据需求自动的更改数量。
+ * ExecutorService newSingleThreadExecutor() : 创建单个线程池。线程池中只有一个线程
+ * 
+ * ScheduledExecutorService newScheduledThreadPool() : 创建固定大小的线程，可以延迟或定时的执行任务。
+ */
+public class TestThreadPool {
+	
+	public static void main(String[] args) throws Exception {
+		//1. 创建线程池
+		ExecutorService pool = Executors.newFixedThreadPool(5);
+		
+		List<Future<Integer>> list = new ArrayList<>();
+		
+		for (int i = 0; i < 10; i++) {
+			Future<Integer> future = pool.submit(new Callable<Integer>(){
+
+				@Override
+				public Integer call() throws Exception {
+					int sum = 0;
+					
+					for (int i = 0; i <= 100; i++) {
+						sum += i;
+					}
+					
+					return sum;
+				}
+				
+			});
+
+			list.add(future);
+		}
+		
+		pool.shutdown();
+		
+		for (Future<Integer> future : list) {
+			System.out.println(future.get());
+		}
+		
+		/*ThreadPoolDemo tpd = new ThreadPoolDemo();
+		
+		//2. 为线程池中的线程分配任务
+		for (int i = 0; i < 10; i++) {
+			pool.submit(tpd);
+		}
+		
+		//3. 关闭线程池
+		pool.shutdown();*/
+	}
+	
+//	new Thread(tpd).start();
+//	new Thread(tpd).start();
+
+}
+
+class ThreadPoolDemo implements Runnable{
+
+	private int i = 0;
+	
+	@Override
+	public void run() {
+		while(i <= 100){
+			System.out.println(Thread.currentThread().getName() + " : " + i++);
+		}
+	}
+	
+}
+```
+
+## 线程调度
+
+### ScheduledExecutorService
+
+一个 ExecutorService，可安排在给定的延迟后运行或定期执行的命令。
+
+**示例代码**
+
+```java
+public class TestScheduledThreadPool {
+
+	public static void main(String[] args) throws Exception {
+		ScheduledExecutorService pool = Executors.newScheduledThreadPool(5);
+		
+		for (int i = 0; i < 5; i++) {
+			Future<Integer> result = pool.schedule(new Callable<Integer>(){
+
+				@Override
+				public Integer call() throws Exception {
+					int num = new Random().nextInt(100);//生成随机数
+					System.out.println(Thread.currentThread().getName() + " : " + num);
+					return num;
+				}
+				
+			}, 1, TimeUnit.SECONDS);
+			
+			System.out.println(result.get());
+		}
+		
+		pool.shutdown();
+	}
+}
+```
+
+## ForkJoinPool 分支/合并框架 工作窃取
+
+### Fork/Join 框架
+
+Fork/Join 框架：就是在必要的情况下，将一个大任务，进行拆分(fork)成若干个小任务（拆到不可再拆时），再将一个个的小任务运算的结果进行 join 汇总。
+
+<img src="image/2019030610521443.png" alt="在这里插入图片描述" style="zoom:80%;" />
+
+### Fork/Join 框架与线程池的区别
+
+- 采用 “工作窃取”模式（work-stealing）：
+  当执行新的任务时它可以将其拆分分成更小的任务执行，并将小任务加到线程队列中，然后再从一个随机线程的队列中偷一个并把它放在自己的队列中。
+- 相对于一般的线程池实现，fork/join框架的优势体现在对其中包含的任务的处理方式上.在一般的线程池中，如果一个线程正在执行的任务由于某些原因无法继续运行，那么该线程会处于等待状态。而在fork/join框架实现中，如果某个子问题由于等待另外一个子问题的完成而无法继续运行。那么处理该子问题的线程会主动寻找其他尚未运行的子问题来执行.这种方式减少了线程的等待时间，提高了性能。
+
+**示例代码**
+
+```java
+public class TestForkJoinPool {
+	
+	public static void main(String[] args) {
+		Instant start = Instant.now();
+		
+		ForkJoinPool pool = new ForkJoinPool();
+		
+		ForkJoinTask<Long> task = new ForkJoinSumCalculate(0L, 50000000000L);
+		
+		Long sum = pool.invoke(task);
+		
+		System.out.println(sum);
+		
+		Instant end = Instant.now();
+		
+		System.out.println("耗费时间为：" + Duration.between(start, end).toMillis());//166-1996-10590
+	}
+	
+	//普通串行计算
+	@Test
+	public void test1(){
+		Instant start = Instant.now();
+		
+		long sum = 0L;
+		
+		for (long i = 0L; i <= 50000000000L; i++) {
+			sum += i;
+		}
+		
+		System.out.println(sum);
+		
+		Instant end = Instant.now();
+		
+		System.out.println("耗费时间为：" + Duration.between(start, end).toMillis());//35-3142-15704
+	}
+	
+	//java8 新特性
+	@Test
+	public void test2(){
+		Instant start = Instant.now();
+		
+		Long sum = LongStream.rangeClosed(0L, 50000000000L)
+							 .parallel()
+							 .reduce(0L, Long::sum);
+		
+		System.out.println(sum);
+		
+		Instant end = Instant.now();
+		
+		System.out.println("耗费时间为：" + Duration.between(start, end).toMillis());//1536-8118
+	}
+
+}
+
+class ForkJoinSumCalculate extends RecursiveTask<Long>{
+
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = -259195479995561737L;
+	
+	private long start;
+	private long end;
+	
+	private static final long THURSHOLD = 10000L;  //临界值
+	
+	public ForkJoinSumCalculate(long start, long end) {
+		this.start = start;
+		this.end = end;
+	}
+
+	@Override
+	protected Long compute() {
+		long length = end - start;
+		
+		if(length <= THURSHOLD){
+			long sum = 0L;
+			
+			for (long i = start; i <= end; i++) {
+				sum += i;
+			}
+			
+			return sum;
+		}else{
+			long middle = (start + end) / 2;
+			
+			ForkJoinSumCalculate left = new ForkJoinSumCalculate(start, middle); 
+			left.fork(); //进行拆分，同时压入线程队列
+			
+			ForkJoinSumCalculate right = new ForkJoinSumCalculate(middle+1, end);
+			right.fork(); //
+			
+			return left.join() + right.join();
+		}
+	}
+}
+```
 
-### 缺陷注意
-
-- value内存泄漏
-  - 原因：ThreadLocal 被 ThreadLocalMap 中的 entry 的 key 弱引用。如果 ThreadLocal 没有被强引用， 那么 GC 时 Entry 的 key 就会被回收，但是对应的 value 却不会回收，就会造成内存泄漏
-  - 解决方案：每次使用完 ThreadLocal，都调用它的 remove () 方法，清除value数据。
-  - 源码图示
-    - 
-
-### 面试题
-
-- ThreadLocal 的作用是什么？
-- 讲一讲ThreadLocal的实现原理(组成结构)
-- ThreadLocal有什么风险？
-
-## final与不变性
-
-### 什么是不变性（Immutable）
-
-- 如果对象在被创建后，状态就不能被修改，那么它就是不可变的。
-- 具有不变性的对象一定是线程安全的，我们不需要对其采取任何额外的安全措施，也能保证线程安全。
-
-### final的作用
-
-- 类防止被继承、方法防止被重写、变量防止被修改
-- 天生是线程安全的(因为不能修改)，而不需要额外的同步开销
-
-### final的3种用法：修饰变量、方法、类
-
-- final修饰变量
-  - 被final修饰的变量，意味着值不能被修改。
-    如果变量是对象，那么对象的引用不能变，但是对象自身的内容依然可以变化。
-  - 赋值时机
-    - 属性被声明为final后，该变量则只能被赋值一次。且一旦被赋值，final的变量就不能再被改变，如论如何也不会变。
-    - 区分为3种
-      - final instance variable（类中的final属性）
-        - 等号右侧、构造函数、初始化代码块
-      - final static variable（类中的static final属性）
-        - 等号右侧、静态初始化代码块
-      - final local variable（方法中的final变量）
-        - 使用前复制即可
-    - 为什么规定时机
-      - 根据JVM对类和成员变量、静态成员变量的加载规则来看：如果初始化不赋值，后续赋值，就是从null变成新的赋值，这就违反final不变的原则了！
-- final修饰方法（构造方法除外）
-  - 不可被重写，也就是不能被override，即便是子类有同样名字的方法，那也不是override，与static类似*
-- final修饰类
-  - 不可被继承，例如典型的String类就是final的
-
-### 栈封闭 实现线程安全
-
-- 在方法里新建的局部便咯，实际上是存储在每个线程私有的栈空间，线程栈不能被其它线程访问，所以不会有线程安全问题，如ThreadLocal
-
-## CAS
-
-### 什么是CAS
-
-- 我认为V的值应该是A，如果是的话那我就把它改成B，如果不是A（说明被别人修改过了），那我就不修改了，避免多人同时修改导致出错。
-- CAS有三个操作数：内存值V、预期值A、要修改的值B，当且仅当预期值A和内存值V相同时，才将内存值修改为B，否则什么都不做。最后返回现在的V值。
-- 最终执行CPU处理机提供的的原子指令
-
-### 缺点
-
-- ABA问题
-  - 我认为 V的值为A，有其它线程在这期间修改了值为B，但它又修改成了A，那么CAS只是对比最终结果和预期值，就检测不出是否修改过
-- CAS+自旋，导致自旋时间过长
-- 改进：通过版本号的机制来解决。每次变量更新的时候，版本号加 1，如AtomicStampedReference的compareAndSet ()
-
-### 应用场景
-
-- 1 乐观锁：数据库、git版本号； 自旋 2 concurrentHashMap：CAS+自旋
-  3 原子类
-
-### CAS底层实现
-
-- 通过Unsafe获取待修改变量的内存递增，
-  比较预期值与结果，调用汇编cmpxchg指令
-
-### 以AtomicInteger为例，分析在Java中是如何利用CAS实现原子操作的？
-
-- 1.使用Unsafe类拿到value的内存递增，通过偏移量 直接操作内存数据
-- 2.Unsafe的getAndAddInt方法，使用CAS+自旋尝试修改数据
-- CAS的参数通过 预期值 与 实际拿到的值进行比较，相同就修改，不相同就自旋
-- Unsafe提供硬件级别的原子操作，最终调用原子汇编指令的cmpxchg指令
-
-## 原子类atomic包
-
-### 原子类的作用
-
-- 原子类的作用和锁类似，都是为了保证并发下线程安全
-- 粒度更细，变量级别
-- 效率更高，除了高度竞争外
-
-### 原子类的种类
-
-- Atomic*基本类型原子类：AtomicInteger、AtomicLong、AtomicBoolean
-- Atomic*Array数组类型原子类：AtomicIntegerArray、AtomicLongArray、AtomicReferenceArray
-- Atomic*Reference 引用类型原子类：AtomicReference等
-- AtomicIntegerFiledUpdate等升级类型原子类
-- Adder累加器、Accumlator累加器
-
-### AtomicInteger
-
-- 常用方法
-  - get、getAndSet、getAndIncrement、compareAndSet(int expect,int update)
-- 实现原理
-  - AtomicInteger 内部使用 CAS 原子语义来处理加减等操作。CAS通过判断内存某个位置的值是否与预期值相等，如果相等则进行值更新
-  - CAS 是内部是通过 Unsafe 类实现，而 Unsafe 类的方法都是 native 的，在 JNI 里是借助于一个 CPU 指令完成的，属于原子操作。
-- 缺点
-  - 循环开销大。如果 CAS 失败，会一直尝试
-  - 只能保证单个共享变量的原子操作，对于多个共享变量，CAS 无法保证，引出原子引用类
-  - 用CAS存在 ABA 问题
-
-### Adder累加器
-
-- 引入目的/改进思想
-  - AtomicLong在每一次加法都要flush和refresh主存，与JMM内存模型有关。工作线程之间不能直接通信，需要通过主内存间接通信
-- 设计思想
-  - Java8引入，高并发下LongAdder比AtomicLong效率高，本质是空间换时间
-  - 竞争激烈时，LongAdder把不同线程对应到不同的Cell单元上进行修改，降低了冲突的概率，是多段锁的理念，提高了并发性
-  - 每个线程都有自己的一个计数器，不存在竞争
-  - sum源码分析：最终把每一个Cell的计数器与base主变量相加
-
-### 面试题
-
-- AtomicInteger 怎么实现原子操作的？
-- AtomicInteger 有哪些缺点？
-
-## 并发容器
-
-### ConcurrentHashMap
-
-- 集合类历史
-  - Vector的方法被synchronizd修饰，同步锁；不允许多个线程同时执行。并发量大的时候性能不好
-  - Hashtable是线程安全的HashMap，方法也是被synchronized修饰，同步但并发性能差
-  - Collections工具类，提高的有synchronizedList和synchronizedMap，代码内使用sync互斥变量加锁
-- 为什么需要
-  - 为什么不用HashMap
-    - 1.多线程下同时put碰撞导致数据丢失
-    - 2.多线程下同时put扩容导致数据丢失
-    - 3.死循环造成的CPU100%
-  - 为什么不用Collection.synchronizedMap
-    - 同步锁并发性能低
-- 数据结构与并发策略
-  - JDK1.7
-    - 数组+链表，拉链法解决冲突
-    - 采用分段锁，每个数组结点是一个独立的ReentrantLock锁，可以支持同时并发写
-  - JDK1.8
-    - 数组+链表+红黑树，拉链法和树化解决冲突
-    - 采用CAS+synchronized锁细化
-  - 1.7到1.8改变后有哪些优点
-    - 1.数据结构由链表变为红黑树，树查询效率更高
-    - 2.减少了Hash碰撞，1.7拉链法
-    - 3.保证了并发安全和性能，分段锁改成CAS+synchronized
-    - 为什么超过8要转为红黑树，因为红黑树存储空间是结点的两倍，经过泊松分布，8冲突概率低
-- 注意事项
-  - 组合操作线程不安全，应使用putIfAbsent提供的原子性操作
-
-### CopyOnWriteArrayList
-
-- 引入目的
-  - Vector和SynchronizedList锁的粒度太大并发效率低，并且迭代时无法编辑exceptMod!=Count
-- 适合场景
-  - 读多写少，如黑名单管理每日更新
-- 读写规则
-  - 是对读写锁的升级：读取完全不用加锁，读时写入也不会阻塞。只有写入和写入之间需要同步
-- 实现原理
-  - 创建数据的新副本，实现读写分离，修改时整个副本进行一次复制，完成后最后再替换回去；由于读写分离，旧容器不变，所以线程安全无需锁
-  - 在计算机内存中修改不直接修改主内存，而是修改缓存(cache、对拷贝的副本进行修改)，再进行同步(指针指向新数据)。
-- 缺点
-  - 1.数据一致性问题，拷贝不能保证数据实时一致，只能保证数据最终一致性
-  - 2.内存占用问题，写复制机制，写操作时内存会同时驻扎两个对象的内存
-
-### 并发队列
-
-- 为什么使用队列
-  - 用队列可以在线程间传递数据，缓存数据
-  - 考虑锁等线程安全问题的重任转移到了“队列”上
-- 并发队列关系图示
-  - 
-- BlockingQueue阻塞队列
-  - 阻塞队列是局由自动阻塞功能的队列，线程安全；take方法移除队头，若队列无数据则阻塞直到有数据；put方法插入元素，如果队列已满就无法继续插入则阻塞直到队列里有了空闲空间
-  - ArrayBlockQueue
-    - 有界可指定容量、可公平
-    - Put源码加锁，可中断的上锁方法。没满才可以入队，否则一直await等待。
-  - LinkedBlockingQueue
-    - 无界容量为MAX_VALUE，内部结构Node
-    - 使用了两把锁take锁和put锁互补干扰
-  - PriorityBlockingQueue
-    - 支持优先级，无界队列
-  - SynchronousQueue
-    - 直接传递的队列，容量0，效率高线程池的CacheExecutorPool使用其作为工作队列
-  - DelayQueue
-    - 无界队列，根据延迟时间排序
-- 非阻塞队列
-  - ConcurrentLinkedQueue
-    - 使用链表作为队列存储结构
-    - 使用Unsafe的CAS非阻塞方法来实现线程安全，无需阻塞，适合对性能要求较高的并发场景
-- 选择合适的队列
-  - 边界上看
-    - ArrayBlockQueue有界；LinkedBlockQueue无界适合容量大容量激增
-  - 内存上看
-    - ArrayBlockQueue内部结构是array，从内存存储上看，连续存储更加整齐。而LinkedBlockQueue采用链表结点，可以非连续存储。
-  - 吞吐量上看
-    - 从性能上看LinkedBlockQueue的put锁和锁分开，锁粒度更细，所以优于ArrayBlockQueue
-
-### 总结并发容器对比
-
-- 分为3类：Concurrent*、CopyOnWrite*、Blocking*
-- Concurrent*的特定是大部分使用CAS并发；而CopyOnWrite通过复制一份元数据写加锁实现；Blocking通过ReentLock锁底层AQS实现
-
-## 并发流程控制工具类
-
-### 控制并发流程工具类的作用
-
-- 控制并发流程的工具类，作用是帮助程序员更容易让线程之间相互配合，来满足业务逻辑
-- 并发工具类图示
-  - 
-
-### CountDownLatch倒计时门闩
-
-- 作用(事件)
-  - 一个线程等多个线程、或多个线程等一个线程完成到达，才能继续执行
-- 常用方法
-  - 构造函数中传入倒数值、await、countDown
-
-### Semaphore信号量
-
-- 作用
-  - 用来限制管理数量有限的资源的使用情况，相当于一定数量的“许可证”
-- 常用方法
-  - 构造函数中传入数量、acquire、release
-
-### Condition条件对象
-
-- 作用
-  - 等待条件满足才放行，否则阻塞；一个锁可以对应多个条件
-- 常用方法
-  - lock.newCondition、await、signal
-
-### CyclicBarrier循环栅栏
-
-- 作用(线程)
-  - 多个线程互相等待，直到达到同一个同步点（屏障），再继续一起执行
-- 常用方法
-  - 构造函数中传入个数、await
-
-## AQS
-
-### AQS的作用
-
-- AQS是一个用于构建锁、同步器、协作工具类的框架，有了AQS后，更多的协作工具类都可以很方便的写出来
-
-### AQS的应用场景
-
-- Exclusive(独占)
-  - ReentrantLock 公平和非公平锁
-- Share(共享)
-  - Semaphore/CountDownLatch/CyclicBarrier
-
-### AQS原理解析
-
-- 核心三要素
-  - 1.sate
-    - 使用一个 int 成员变量来表示同步状态 state，被volatile修饰，会被并发修改，各方法如getState、setState等使用CAS保证线程安全
-    - 在ReentrantLock中，表示可重入的次数
-    - 在Semaphore中，表示剩余许可证信号的数量
-    - 在CountDownLatch中，表示还需要倒数的个数
-  - 2.控制线程抢锁和配合的FIFO队列
-    - 获取资源线程的排队工作
-  - 3.期望协作工具类去实现的“获取/释放”等唤醒分配的方法策略
-- AQS的用法
-  - 第一步：写一个类，想好协作的逻辑，实现获取/释放方法
-  - 第二步：内部写一个Sync类继承AbstractQueueSynchronizer
-  - 第三步：Sync类根据独占还是共享重写tryAcquire/tryRelease或tryAcquireShared和tryReleaseShared等方法，在之前写的获取/释放方法中调用AQS的acquire/release或则Shared方法
-
-### AQS应用实例源码解析
-
-- AQS在CountDownLatch的应用
-  - 内部类Sync继承AQS
-  - 1.state表示门闩倒数的count数量，对应getCount方法获取
-  - 2.释放方法，countDown方法会让state减1，直到减为0时就唤醒所有线程。countDown方法调用releaseShared，它调用sync实现的tryReleaseShared，其使用CAS+自旋锁，来实现安全的计数-1
-  - 3.阻塞方法，await会调用sync提供的aquireSharedInterruptly方法，当state不等于0时，最终调用LockUpport的park，它利用Unsafe的park，native方法，把线程加入阻塞队列
-  - 总结
-    - 
-- AQS在Semphore的应用
-  - state表示信号量允许的剩余许可数量
-  - tryAcquire方法，判断信号量大于0就成功获取，使用CAS+自旋改变state状态。如果信号量小于0了，再请求时tryAcquireShared返回负数，调用aquireSharedInterruptly方法就进入阻塞队列
-  - release方法，调用sync实现的releaseShared，会利用AQS去阻塞队列唤醒一个线程
-  - 总结
-    - 
-- AQS在ReentrantLock的应用
-  - state表示已重入的次数，独占锁权保存在AQS的Thread类型的exclusiveOwnerThread变量中
-  - 释放锁: unlock方法调用sync实现的release方法，会调用tryRelease，使用setState而不是CAS来修改重入次数state，当state减到0完全释放锁
-  - 加锁lock方法：调用sync实现的lock方法。CAS尝试修改锁的所有权为当前线程，如果修改失败就要调用acquire方法再次尝试获取，acquire方法调用了AQS的tryAcquire，这个实现在ReentantLock的里面，获取失败加入到阻塞队列
-
-### 通过AQS自定义同步器
-
-- 自定义同步器在实现时只需要根据业务逻辑需求，实现共享资源 state 的获取与释放方式策略即可
-- 至于具体线程等待队列的维护（如获取资源失败入队 / 唤醒出队等），AQS 已经在顶层实现好了
