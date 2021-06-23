@@ -948,7 +948,7 @@ mysql> explain select * from student where name='Joe' and c_id=2 and phone='1350
 首先，我们看到key列为stu_class_phone ，说明该查询使用了stu_class_phone索引，这是一个组合索引（name,c_id,phone）。看下这三个字段的结构声明与实际字节计算：
 **name varchar(255) not null, （占767字节）**
 
-①255字长（utf8字符集，一个字长3字节 ）2553=765 √
+①255字长（utf8字符集，一个字长3字节 ）255 * 3 = 765 √
 ②是否非空 已限定非空（not null） 那就不额外占1字节
 ③字符串长度 str_len占2字节√
 
