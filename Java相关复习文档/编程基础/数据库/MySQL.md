@@ -1851,3 +1851,162 @@ insert into … on duplicate key update的语义逻辑是，插入一行数据�
 第三种方式，会人为造成锁冲突
 
 第二种方式相对较好
+
+## SQL解析
+
+首先看一下示例语句
+
+```sql
+SELECT DISTINCT
+ < select_list >
+FROM
+ < left_table > < join_type >
+JOIN < right_table > ON < join_condition >
+WHERE
+ < where_condition >
+GROUP BY
+ < group_by_list >
+HAVING
+ < having_condition >
+ORDER BY
+ < order_by_condition >
+LIMIT < limit_number >
+```
+
+ 然而它的执行顺序是这样的
+
+```sql
+FROM <left_table>
+ON <join_condition>
+<join_type> JOIN <right_table>  第二步和第三步会循环执行
+WHERE <where_condition>  第四步会循环执行，多个条件的执行顺序是从左往右的。
+GROUP BY <group_by_list>
+HAVING <having_condition>
+SELECT 分组之后才会执行SELECT
+DISTINCT <select_list>
+ORDER BY <order_by_condition>
+LIMIT <limit_number> 前9步都是SQL92标准语法。limit是MySQL的独有语法
+```
+
+来看一个例子
+
+假设有表1和表2
+
+table1
+
+![img](image/1073044-20190526165322578-727554588.png)
+
+table2
+
+![img](image/1073044-20190526165351785-1732458020.png)
+
+**1、from**
+
+2个表联合查询得到他们的笛卡尔积CROSS JOIN，产生 虚表VT1
+
+![img](image/1073044-20190526171139300-1898079252.png)
+
+**2、ON过滤**
+
+对 虚表VT1 进行ON筛选，只有那些符合的行才会被记录在虚表VT2中。
+注意：这里因为语法限制，使用了'WHERE'代替，从中读者也可以感受到两者之间微妙的关系；
+
+![img](image/1073044-20190526171427722-202896087.png)
+
+**3.OUTER JOIN添加外部列**
+
+如果指定了 OUTER JOIN（比如left join、 right join） ，那么 保留表中未匹配的行 就会作为外部行 添加 到 虚
+拟表VT2 中，产生 虚拟表VT3 。
+如果FROM子句中包含两个以上的表的话，那么就会对上一个join连接产生的结果VT3和下一个表重复执行步骤1~3
+这三个步骤，一直到处理完所有的表为止
+
+![img](image/1073044-20190526171618227-639527549.png)
+
+**4.WHERE**
+
+对 虚拟表VT3 进行WHERE条件过滤。只有符合的记录才会被插入到 虚拟表VT4 中。
+
+![img](image/1073044-20190526171808523-842362542.png)
+
+**5.GROUP BY**
+
+根据group by子句中的列，对VT4中的记录进行分组操作，产生 虚拟表VT5 。
+注意：
+其后处理过程的语句，如SELECT,HAVING，所用到的列必须包含在GROUP BY中。对于没有出现的，得用聚合函
+数；
+原因：
+GROUP BY改变了对表的引用，将其转换为新的引用方式，能够对其进行下一级逻辑操作的列会减少；
+
+![img](image/1073044-20190526172032842-480729539.png)
+
+**6.HAVING**
+
+对 虚拟表VT5 应用having过滤，只有符合的记录才会被 插入到 虚拟表VT6 中。
+
+ ![img](image/1073044-20190526172158511-883445628.png)
+
+**7.SELECT**
+
+这个子句对SELECT子句中的元素进行处理，生成VT5表。
+(5-J1)计算表达式 计算SELECT 子句中的表达式，生成VT5-J1
+
+**8.DISTINCT**
+
+寻找VT5-1中的重复列，并删掉，生成VT5-J2
+如果在查询中指定了DISTINCT子句，则会创建一张内存临时表（如果内存放不下，就需要存放在硬盘了）。这张
+临时表的表结构和上一步产生的虚拟表VT5是一样的，不同的是对进行DISTINCT操作的列增加了一个唯一索引，以
+此来除重复数据
+
+![img](image/1073044-20190526172417062-778354048.png)
+
+**9.ORDER BY**
+
+从 VT5-J2 中的表中，根据ORDER BY 子句的条件对结果进行排序，生成VT6表。
+注意：
+唯一可使用SELECT中别名的地方
+
+![img](image/1073044-20190526172556323-2018274387.png)
+
+**10.LIMIT（MySQL特有）**
+
+LIMIT子句从上一步得到的 VT6虚拟表 中选出从指定位置开始的指定行数据
+
+**注意：**
+offset 和 rows 的正负带来的影响；
+当偏移量很大时效率是很低的，可以这么做：
+采用子查询的方式优化 ，在子查询里先从索引获取到最大id，然后倒序排，再取N行结果集
+采用INNER JOIN优化 ，JOIN子句里也优先从索引获取ID列表，然后直接关联查询获得最终结果
+
+![img](image/1073044-20190526172737024-1315377031.png)
+
+**解析顺序总结**
+
+![img](image/1073044-20190526172849888-302192998.png)
+
+**流程分析**
+
+```sql
+1.  FROM（将最近的两张表，进行笛卡尔积）---VT1
+2.  ON（将VT1按照它的条件进行过滤）---VT2
+3.  LEFT JOIN（保留左表的记录）---VT3
+4.  WHERE（过滤VT3中的记录）--VT4…VTn
+5.  GROUP BY（对VT4的记录进行分组）---VT5
+6.  HAVING（对VT5中的记录进行过滤）---VT6
+7.  SELECT（对VT6中的记录，选取指定的列）--VT7
+8.  ORDER BY（对VT7的记录进行排序）--VT8
+9.  LIMIT（对排序之后的值进行分页）--MySQL特有的语法
+```
+
+**流程说明**
+
+> 单表查询：根据 WHERE 条件过滤表中的记录，形成中间表（这个中间表对用户是不可见的）；然后根据
+> SELECT 的选择列选择相应的列进行返回最终结果。
+>
+> 两表连接查询：对两表求积（笛卡尔积）并用 ON 条件和连接连接类型进行过滤形成中间表；然后根据
+> WHERE条件过滤中间表的记录，并根据 SELECT 指定的列返回查询结果。
+>
+> 笛卡尔积：行相乘、列相加
+>
+> 多表连接查询：先对第一个和第二个表按照两表连接做查询，然后用查询结果和第三个表做连接查询，以此
+> 类推，直到所有的表都连接上为止，最终形成一个中间的结果表，然后根据WHERE条件过滤中间表的记录，
+> 并根据SELECT指定的列返回查询结果。
