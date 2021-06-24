@@ -1852,6 +1852,28 @@ insert into … on duplicate key update的语义逻辑是，插入一行数据�
 
 第二种方式相对较好
 
+## MySQL默认隔离级别为什么是可重复读
+
+在SQL标准中，前三种隔离级别分别解决了幻象读、不可重复读和脏读的问题。那么，为什么MySQL使用可重复读作为默认隔离级别呢？
+这个是有历史原因的，要从主从复制开始讲起了！
+1.主从复制，是基于什么复制的？
+是基于binlog复制的
+2.binlog有几种格式？
+statement:记录的是修改SQL语句
+row：记录的是每行实际数据的变更
+mixed：statement和row模式的混合
+那Mysql在5.0这个版本以前，binlog只支持STATEMENT这种格式！而这种格式在读已提交(Read Commited)这个隔离级别下主从复制是有bug的，因此Mysql将可重复读(Repeatable Read)作为默认的隔离级别！
+接下来，就要说说当binlog为STATEMENT格式，且隔离级别为读已提交(Read Commited)时，有什么bug呢？如下图所示，在主(master)上执行如下事务:
+
+<img src="image/image-20210624160925614-1624522166780.png" alt="image-20210624160925614" style="zoom: 80%;" />
+
+这里出现了主从不一致性的问题！原因其实很简单，就是在master上执行的顺序为先删后插！而此时binlog为STATEMENT格式，它记录的顺序为先插后删！从(slave)同步的是binglog，因此从机执行的顺序和主机不一致！就会出现主从不一致！
+如何解决？
+解决方案有两种！
+(1)隔离级别设为可重复读(Repeatable Read),在该隔离级别下引入间隙锁。当Session 1执行delete语句时，会锁住间隙。那么，Ssession 2执行插入语句就会阻塞住！
+(2)将binglog的格式修改为row格式，此时是基于行的复制，自然就不会出现sql执行顺序不一样的问题！奈何这个格式在mysql5.1版本开始才引入。
+因此由于历史原因，mysql将默认的隔离级别设为可重复读(Repeatable Read)，保证主从复制不出问题！
+
 ## SQL解析
 
 首先看一下示例语句
