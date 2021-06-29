@@ -53,16 +53,19 @@ public void lock() {
     sync.lock();
 }
 
-//公平锁获取
+//公平锁尝试获取锁
 final void lock() {
-    acquire(1);
+    //直接去排队
+    acquire(1);//通过cas算法尝试将自己加入队列尾部
 }
 
-//非公平锁获取
+//非公平锁尝试获取锁
 final void lock() {
-    if (compareAndSetState(0, 1))
+    if (compareAndSetState(0, 1))//通过cas算法尝试获取锁
+        //获取成功，将持有锁的线程修改为本线程
         setExclusiveOwnerThread(Thread.currentThread());
     else
+        //去排队
         acquire(1);
 }
 ```
@@ -73,6 +76,7 @@ final void lock() {
 **公平锁tryAcquire：**
 
 ```java
+//自旋尝试获取锁
 protected final boolean tryAcquire(int acquires) {
     final Thread current = Thread.currentThread();
     int c = getState();//获取锁状态state
@@ -103,7 +107,7 @@ protected final boolean tryAcquire(int acquires) {
 **非公平锁tryAcquire**
 
 ```java
-//非公平锁获取
+//自旋尝试获取锁
 protected final boolean tryAcquire(int acquires) {
     return nonfairTryAcquire(acquires);
 }
