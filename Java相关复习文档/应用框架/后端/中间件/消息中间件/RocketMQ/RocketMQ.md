@@ -25,21 +25,21 @@ RocketMQ是阿里开源的分布式消息中间件，跟其它中间件相比，
 
 - 削峰填谷（主要解决诸如秒杀、抢红包、企业开门红等大型活动时皆会带来较高的流量脉冲，或因没做相应的保护而导致系统超负荷甚至崩溃，或因限制太过导致请求大量失败而影响用户体验，海量消息堆积能力强）
 
-  ![img](image/aHR0cHM6Ly9iYnNtYXguaWthZmFuLmNvbS9zdGF0aWMvTDNCeWIzaDVMMmgwZEhCekwybHRaekl3TVRndVkyNWliRzluY3k1amIyMHZZbXh2Wnk4eE16RXhOamd4THpJd01Ua3dPQzh4TXpFeE5qZ3hMVEl3TVRrd09ERTNNVFF4TURRNE1qSTRMVEU0TmpVME9UWTBPREF1Y0c1bi5qcGc)
+  ![img](image/4)
 
   - 异步解耦（高可用松耦合架构设计，对高依赖的项目之间进行解耦，当下游系统出现宕机，不会影响上游系统的正常运行，或者雪崩）
 
     ![L3Byb3h5L2h0dHBzL2ltZzIwMTguY25ibG9ncy5jb20vYmxvZy8xMzExNjgxLzIwMTkwOC8xMzExNjgxLTIwMTkwODE3MTQxMTAxODI0LTY4MTkxNDMxLnBuZw==.jpg](image/L3Byb3h5L2h0dHBzL2ltZzIwMTguY25ibG9ncy5jb20vYmxvZy8xMzExNjgxLzIwMTkwOC8xMzExNjgxLTIwMTkwODE3MTQxMTAxODI0LTY4MTkxNDMxLnBuZw==.jpg)
 
-    ![img](image/aHR0cHM6Ly9iYnNtYXguaWthZmFuLmNvbS9zdGF0aWMvTDNCeWIzaDVMMmgwZEhCekwybHRaekl3TVRndVkyNWliRzluY3k1amIyMHZZbXh2Wnk4eE16RXhOamd4THpJd01Ua3dPQzh4TXpFeE5qZ3hMVEl3TVRrd09ERTNNVFF4TVRBeE9ESTBMVFk0TVRreE5ETXhMbkJ1Wnc9PS5qcGc)
+    ![img](image/5)
 
     顺序消息（顺序消息即保证消息的先进先出，比如证券交易过程时间优先原则，交易系统中的订单创建、支付、退款等流程，航班中的旅客登机消息处理等）
 
-    ![img](image/aHR0cHM6Ly9iYnNtYXguaWthZmFuLmNvbS9zdGF0aWMvTDNCeWIzaDVMMmgwZEhCekwybHRaekl3TVRndVkyNWliRzluY3k1amIyMHZZbXh2Wnk4eE16RXhOamd4THpJd01Ua3dPQzh4TXpFeE5qZ3hMVEl3TVRrd09ERTNNVFF4TURJMU16STFMVGsyTWprMk5ESXpPUzV3Ym1jPS5qcGc)
+    ![img](image/3)
 
     分布式事务消息（确保数据的最终一致性，大量引入 MQ 的分布式事务，既可以实现系统之间的解耦，又可以保证最终的数据一致性，减少系统间的交互）
 
-    - ![img](image/aHR0cHM6Ly9iYnNtYXguaWthZmFuLmNvbS9zdGF0aWMvTDNCeWIzaDVMMmgwZEhCekwybHRaekl3TVRndVkyNWliRzluY3k1amIyMHZZbXh2Wnk4eE16RXhOamd4THpJd01Ua3dPQzh4TXpFeE5qZ3hMVEl3TVRrd09ERTNNVFF4TmpFME5UTXhMVGt6TWpZM09URTFNeTV3Ym1jPS5qcGc)
+    - ![img](image/2)
 
      
 
