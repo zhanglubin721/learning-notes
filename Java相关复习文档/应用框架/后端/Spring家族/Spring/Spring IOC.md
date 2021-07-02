@@ -6,10 +6,6 @@ Spring 最重要的概念是 IOC 和 AOP，本篇文章其实就是要带领大�
 
 我采用的源码版本是 4.3.11.RELEASE，算是 5.0.x 前比较新的版本了。为了降低难度，本文所说的所有的内容都是基于 xml 的配置的方式，实际使用已经很少人这么做了，至少不是纯 xml 配置，不过从理解源码的角度来看用这种方式来说无疑是最合适的。如果读者对注解方式的源码感兴趣，也许等我有时间的时候可以写篇文章介绍介绍。
 
-我希望能将此文写成一篇 Spring IOC 源码分析的好文章，希望通过本文可以让读者不惧怕阅读 Spring 源码。
-
-为了保持文章的严谨性，如果读者发现我哪里说错了请一定不吝指出，非常希望可以听到读者的声音。
-
 ## 引言
 
 先看下最基本的启动 Spring 容器的例子：
@@ -154,15 +150,12 @@ public class ClassPathXmlApplicationContext extends AbstractXmlApplicationContex
 public void refresh() throws BeansException, IllegalStateException {
    // 来个锁，不然 refresh() 还没结束，你又来个启动或销毁容器的操作，那不就乱套了嘛
    synchronized (this.startupShutdownMonitor) {
- 
       // 准备工作，记录下容器的启动时间、标记“已启动”状态、处理配置文件中的占位符
       prepareRefresh();
- 
       // 这步比较关键，这步完成后，配置文件就会解析成一个个 Bean 定义，注册到 BeanFactory 中，
       // 当然，这里说的 Bean 还没有初始化，只是配置信息都提取出来了，
       // 注册也只是将这些信息都保存到了注册中心(说到底核心是一个 beanName-> beanDefinition 的 map)
       ConfigurableListableBeanFactory beanFactory = obtainFreshBeanFactory();
- 
       // 设置 BeanFactory 的类加载器，添加几个 BeanPostProcessor，手动注册几个特殊的 bean
       // 这块待会会展开说
       prepareBeanFactory(beanFactory);
@@ -202,9 +195,7 @@ public void refresh() throws BeansException, IllegalStateException {
  
          // 最后，广播事件，ApplicationContext 初始化完成
          finishRefresh();
-      }
- 
-      catch (BeansException ex) {
+      } catch (BeansException ex) {
          if (logger.isWarnEnabled()) {
             logger.warn("Exception encountered during context initialization - " +
                   "cancelling refresh attempt: " + ex);
@@ -230,7 +221,7 @@ public void refresh() throws BeansException, IllegalStateException {
 }
 ```
 
-下面，我们开始一步步来肢解这个 refresh() 方法。
+下面，我们开始一步步来分解这个 refresh() 方法。
 
 ### 创建 Bean 容器前的准备工作
 
@@ -337,7 +328,7 @@ BeanDefinition 接口定义
 ```java
 
 public interface BeanDefinition extends AttributeAccessor, BeanMetadataElement {
- 
+
    // 我们可以看到，默认只提供 sington 和 prototype 两种，
    // 很多读者都知道还有 request, session, globalSession, application, websocket 这几种，
    // 不过，它们属于基于 web 的扩展。
@@ -790,7 +781,7 @@ protected void processBeanDefinition(Element ele, BeanDefinitionParserDelegate d
       scope="singleton" lazy-init="true" init-method="init" destroy-method="cleanup">
  
     <!-- 可以用下面三种形式指定构造参数 -->
-  <constructor-arg type="int" value="7500000"/>
+  	<constructor-arg type="int" value="7500000"/>
     <constructor-arg name="years" value="7500000"/>
     <constructor-arg index="0" value="7500000"/>
  

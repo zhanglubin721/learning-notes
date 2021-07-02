@@ -266,6 +266,17 @@ sorted set多了一个权重参数score,集合中的元素能够按score进行�
 **定期删除+惰性删除是如何工作的呢?**
 定期删除，redis默认每个100ms检查，是否有过期的key,有过期key则删除。需要说明的是，redis不是每个100ms将所有的key检查一次，而是随机抽取进行检查(如果每隔100ms,全部key进行检查，redis岂不是卡死)。因此，如果只采用定期删除策略，会导致很多key到时间没有删除。
 于是，惰性删除派上用场。也就是说在你获取某个key的时候，redis会检查一下，这个key如果设置了过期时间那么是否过期了？如果过期了此时就会删除。
+
+**定期删除配置**
+
+在Redis的配置文件redis.conf中有一个属性"hz"，默认为10，表示1s执行10次定期删除，即每隔100ms执行一次，可以修改这个配置值。
+值越大说明刷新频率越快，最Redis性能损耗也越大。
+hz的取值范围是1~500，通常不建议超过100，只有在请求延时非常低的情况下可以将值提升到100。
+
+**随机抽取一些检测，一些是多少？**
+
+由redis.conf文件中的maxmemory-samples属性决定的，默认为5。开启时，把#去掉。
+
 **采用定期删除+惰性删除就没其他问题了么?**
 不是的，如果定期删除没删除key。然后你也没即时去请求key，也就是说惰性删除也没生效。这样，redis的内存会越来越高。那么就应该采用内存淘汰机制。
 在redis.conf中有一行配置
@@ -293,17 +304,14 @@ ps：如果没有设置 expire 的key, 不满足先决条件(prerequisites); 那
 分析:这两个问题，说句实在话，一般中小型传统软件企业，很难碰到这个问题。如果有大并发的项目，流量有几百万左右。这两个问题一定要深刻考虑。
 回答:如下所示
 
-### 缓存穿透：
+### 缓存穿透
 
 即黑客故意去请求缓存中不存在的数据，导致所有的请求都怼到数据库上，从而数据库连接异常。
-
 
 解决方案:
 (一)利用互斥锁，缓存失效的时候，先去获得锁，得到锁了，再去请求数据库。没得到锁，则休眠一段时间重试
 (二)采用异步更新策略，无论key是否取到值，都直接返回。value值中维护一个缓存失效时间，缓存如果过期，异步起一个线程去读数据库，更新缓存。需要做缓存预热(项目启动前，先加载缓存)操作。
 (三)提供一个能迅速判断请求是否有效的拦截机制，比如，利用布隆过滤器，内部维护一系列合法有效的key。迅速判断出，请求所携带的Key是否合法有效。如果不合法，则直接返回。
-
- 
 
 ### 缓存雪崩
 
@@ -491,7 +499,6 @@ AOF 的特性决定了它相对比较安全，如果你期望数据更少的丢�
 AOF 默认关闭，开启方法，修改配置文件 reds.conf：appendonly yes
 
 ```
-
 ##此选项为aof功能的开关，默认为"no"，可以通过"yes"来开启aof功能  
 ##只有在"yes"下，aof重写/文件同步等特性才会生效  
 appendonly yes  
@@ -800,3 +807,127 @@ try {
 return true;
 ```
 
+## 高级分布式锁
+
+### 为什么需要分布式锁？
+
+在开始讲分布式锁之前，有必要简单介绍一下，为什么需要分布式锁？
+
+与分布式锁相对应的是「单机锁」，我们在写多线程程序时，避免同时操作一个共享变量产生数据问题，通常会使用一把锁来「互斥」，以保证共享变量的正确性，其使用范围是在「同一个进程」中。
+
+如果换做是多个进程，需要同时操作一个共享资源，如何互斥呢？
+
+例如，现在的业务应用通常都是微服务架构，这也意味着一个应用会部署多个进程，那这多个进程如果需要修改 MySQL 中的同一行记录时，为了避免操作乱序导致数据错误，此时，我们就需要引入「分布式锁」来解决这个问题了。
+
+<img src="image/640" alt="图片" style="zoom:67%;" />
+
+因为 Redis 处理每一个请求是「单线程」执行的，在执行一个 Lua 脚本时，其它请求必须等待，直到这个 Lua 脚本处理完成，这样一来，GET + DEL 之间就不会插入其它命令了。
+
+<img src="https://mmbiz.qpic.cn/mmbiz_png/gB9Yvac5K3N9hGL63cpMX4cTuPjx5Y0l7Yq55qiaN0oev6ELIsj0XZIPQjvibABDXWtuU3r8l0yicabHg9wBH7hFQ/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1" alt="图片" style="zoom: 67%;" />
+
+安全释放锁的 Lua 脚本如下：
+
+```lua
+// 判断锁是自己的，才释放
+if redis.call("GET",KEYS[1]) == ARGV[1]
+then
+    return redis.call("DEL",KEYS[1])
+else
+    return 0
+end
+```
+
+好了，这样一路优化，整个的加锁、解锁的流程就更「严谨」了。
+
+```java
+private static final Long lockReleaseOK = 1L;
+static String luaScript = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end";// lua脚本，用来释放分布式锁
+
+public static boolean releaseLock(String key ,String lockValue){
+	if(key == null || lockValue == null) {
+		return false;
+	}
+	try {
+		Jedis jedis = getJedisPool().getResource();
+		Object res =jedis.eval(luaScript,Collections.singletonList(key),Collections.singletonList(lockValue));
+		jedis.close();
+		return res!=null && res.equals(lockReleaseOK);
+	} catch (Exception e) {
+		return false;
+	}
+}
+```
+
+这里我们先小结一下，基于 Redis 实现的分布式锁，一个严谨的的流程如下：
+
+1. 加锁：SET lock_key $unique_id EX $expire_time NX
+2. 操作共享资源
+3. 释放锁：Lua 脚本，先 GET 判断锁是否归属自己，再 DEL 释放锁
+
+<img src="https://mmbiz.qpic.cn/mmbiz_png/gB9Yvac5K3N9hGL63cpMX4cTuPjx5Y0lOXukLVaibs66nBepjicM2ufro0mr5KzqG2H5cUXkPPPndLF9fYicfmoIA/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1" alt="图片" style="zoom:67%;" />
+
+好，有了这个完整的锁模型，让我们重新回到前面提到的第一个问题。
+
+锁过期时间不好评估怎么办？
+
+### 锁过期时间不好评估怎么办？
+
+前面我们提到，锁的过期时间如果评估不好，这个锁就会有「提前」过期的风险。
+
+当时给的妥协方案是，尽量「冗余」过期时间，降低锁提前过期的概率。
+
+这个方案其实也不能完美解决问题，那怎么办呢？
+
+是否可以设计这样的方案：**加锁时，先设置一个过期时间，然后我们开启一个「守护线程」，定时去检测这个锁的失效时间，如果锁快要过期了，操作共享资源还未完成，那么就自动对锁进行「续期」，重新设置过期时间。**
+
+这确实一种比较好的方案。
+
+如果你是 Java 技术栈，幸运的是，已经有一个库把这些工作都封装好了：**Redisson**。
+
+Redisson 是一个 Java 语言实现的 Redis SDK 客户端，在使用分布式锁时，它就采用了「自动续期」的方案来避免锁过期，这个守护线程我们一般也把它叫做「看门狗」线程。
+
+![图片](https://mmbiz.qpic.cn/mmbiz_png/gB9Yvac5K3N9hGL63cpMX4cTuPjx5Y0lE2FNiaicSDK9IjOSZqdVgicpiavRKXgxjVlsObZfX3Hic7MkYfZo4PZQ93w/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1)
+
+除此之外，这个 SDK 还封装了很多易用的功能：
+
+- 可重入锁
+- 乐观锁
+- 公平锁
+- 读写锁
+- Redlock（红锁，下面会详细讲）
+
+这个 SDK 提供的 API 非常友好，它可以像操作本地锁的方式，操作分布式锁。如果你是 Java 技术栈，可以直接把它用起来。
+
+> 这里不重点介绍 Redisson 的使用，大家可以看官方 Github 学习如何使用，比较简单。
+
+到这里我们再小结一下，基于 Redis 的实现分布式锁，前面遇到的问题，以及对应的解决方案：
+
+- **死锁**：设置过期时间
+- **过期时间评估不好，锁提前过期**：守护线程，自动续期
+- **锁被别人释放**：锁写入唯一标识，释放锁先检查标识，再释放
+
+还有哪些问题场景，会危害 Redis 锁的安全性呢？
+
+之前分析的场景都是，锁在「单个」Redis 实例中可能产生的问题，并没有涉及到 Redis 的部署架构细节。
+
+而我们在使用 Redis 时，一般会采用**主从集群 + 哨兵**的模式部署，这样做的好处在于，当主库异常宕机时，哨兵可以实现「故障自动切换」，把从库提升为主库，继续提供服务，以此保证可用性。
+
+**那当「主从发生切换」时，这个分布锁会依旧安全吗？**
+
+试想这样的场景：
+
+1. 客户端 1 在主库上执行 SET 命令，加锁成功
+2. 此时，主库异常宕机，SET 命令还未同步到从库上（主从复制是异步的）
+3. 从库被哨兵提升为新主库，这个锁在新的主库上，丢失了！
+
+<img src="https://mmbiz.qpic.cn/mmbiz_png/gB9Yvac5K3N9hGL63cpMX4cTuPjx5Y0lMjY12NA0rVVGUz2Q4vKLemucEbcnIUlU7Jwk8sgsjm5vUFgw84VFsQ/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1" alt="图片" style="zoom:67%;" />
+
+可见，当引入 Redis 副本后，分布锁还是可能会受到影响。
+
+怎么解决这个问题？
+
+为此，Redis 的作者提出一种解决方案，就是我们经常听到的 **Redlock（红锁）**。
+
+**Redlock还处于争论中，暂时了解一下就行**
+
+## Redisson的使用
