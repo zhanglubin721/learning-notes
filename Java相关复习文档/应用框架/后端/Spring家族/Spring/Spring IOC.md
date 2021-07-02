@@ -2475,3 +2475,252 @@ public void cleanup() {
 ```
 
 ### ConversionService
+
+既然文中说到了这个，顺便提一下好了。
+
+最有用的场景就是，它用来将前端传过来的参数和后端的 controller 方法上的参数进行绑定的时候用。
+
+像前端传过来的字符串、整数要转换为后端的 String、Integer 很容易，但是如果 controller 方法需要的是一个枚举值，或者是 Date 这些非基础类型（含基础类型包装类）值的时候，我们就可以考虑采用 ConversionService 来进行转换。
+
+```xml
+<bean id="conversionService"
+  class="org.springframework.context.support.ConversionServiceFactoryBean">
+  <property name="converters">
+    <list>
+      <bean class="com.javadoop.learning.utils.StringToEnumConverterFactory"/>
+    </list>
+  </property>
+</bean>
+```
+
+ConversionService 接口很简单，所以要自定义一个 convert 的话也很简单。
+
+下面再说一个实现这种转换很简单的方式，那就是实现 Converter 接口。
+
+来看一个很简单的例子，这样比什么都管用。
+
+```java
+public class StringToDateConverter implements Converter<String, Date> {
+ 
+    @Override
+    public Date convert(String source) {
+        try {
+            return DateUtils.parseDate(source, "yyyy-MM-dd", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "HH:mm:ss", "HH:mm");
+        } catch (ParseException e) {
+            return null;
+        }
+    }
+}
+```
+
+只要注册这个 Bean 就可以了。这样，前端往后端传的时间描述字符串就很容易绑定成 Date 类型了，不需要其他任何操作。
+
+### Bean 继承
+
+在初始化 Bean 的地方，我们说过了这个：
+
+```java
+RootBeanDefinition bd = getMergedLocalBeanDefinition(beanName);
+```
+
+这里涉及到的就是 `<bean parent="" />` 中的 parent 属性，我们来看看 Spring 中是用这个来干什么的。
+
+首先，我们要明白，这里的继承和 java 语法中的继承没有任何关系，不过思路是相通的。child bean 会继承 parent bean 的所有配置，也可以覆盖一些配置，当然也可以新增额外的配置。
+
+Spring 中提供了继承自 AbstractBeanDefinition 的 `ChildBeanDefinition` 来表示 child bean。
+
+看如下一个例子:
+
+```java
+<bean id="inheritedTestBean" abstract="true" class="org.springframework.beans.TestBean">
+    <property name="name" value="parent"/>
+    <property name="age" value="1"/>
+</bean>
+ 
+<bean id="inheritsWithDifferentClass" class="org.springframework.beans.DerivedTestBean"
+        parent="inheritedTestBean" init-method="initialize">
+ 
+    <property name="name" value="override"/>
+</bean>
+```
+
+parent bean 设置了 `abstract="true"` 所以它不会被实例化，child bean 继承了 parent bean 的两个属性，但是对 name 属性进行了覆写。
+
+child bean 会继承 scope、构造器参数值、属性值、init-method、destroy-method 等等。
+
+当然，我不是说 parent bean 中的 abstract = true 在这里是必须的，只是说如果加上了以后 Spring 在实例化 singleton beans 的时候会忽略这个 bean。
+
+比如下面这个极端 parent bean，它没有指定 class，所以毫无疑问，这个 bean 的作用就是用来充当模板用的 parent bean，此处就必须加上 abstract = true。
+
+```java
+<bean id="inheritedTestBeanWithoutClass" abstract="true">
+    <property name="name" value="parent"/>
+    <property name="age" value="1"/>
+</bean>
+```
+
+### 方法注入
+
+一般来说，我们的应用中大多数的 Bean 都是 singleton 的。singleton 依赖 singleton，或者 prototype 依赖 prototype 都很好解决，直接设置属性依赖就可以了。
+
+但是，如果是 singleton 依赖 prototype 呢？这个时候不能用属性依赖，因为如果用属性依赖的话，我们每次其实拿到的还是第一次初始化时候的 bean。
+
+一种解决方案就是不要用属性依赖，每次获取依赖的 bean 的时候从 BeanFactory 中取。这个也是大家最常用的方式了吧。怎么取，我就不介绍了，大部分 Spring 项目大家都会定义那么个工具类的。
+
+另一种解决方案就是这里要介绍的通过使用 Lookup method。
+
+lookup-method
+
+我们来看一下 Spring Reference 中提供的一个例子：
+
+```java
+package fiona.apple;
+ 
+// no more Spring imports!
+ 
+public abstract class CommandManager {
+ 
+    public Object process(Object commandState) {
+        // grab a new instance of the appropriate Command interface
+        Command command = createCommand();
+        // set the state on the (hopefully brand new) Command instance
+        command.setState(commandState);
+        return command.execute();
+    }
+ 
+    // okay... but where is the implementation of this method?
+    protected abstract Command createCommand();
+}
+```
+
+xml 配置 `<lookup-method />`：
+
+```java
+<!-- a stateful bean deployed as a prototype (non-singleton) -->
+<bean id="myCommand" class="fiona.apple.AsyncCommand" scope="prototype">
+    <!-- inject dependencies here as required -->
+</bean>
+ 
+<!-- commandProcessor uses statefulCommandHelper -->
+<bean id="commandManager" class="fiona.apple.CommandManager">
+    <lookup-method name="createCommand" bean="myCommand"/>
+</bean>
+```
+
+Spring 采用 **CGLIB 生成字节码**的方式来生成一个子类。我们定义的类不能定义为 final class，抽象方法上也不能加 final。
+
+lookup-method 上的配置也可以采用注解来完成，这样就可以不用配置 `<lookup-method />` 了，其他不变：
+
+```java
+public abstract class CommandManager {
+ 
+    public Object process(Object commandState) {
+        MyCommand command = createCommand();
+        command.setState(commandState);
+        return command.execute();
+    }
+ 
+    @Lookup("myCommand")
+    protected abstract Command createCommand();
+}
+```
+
+> 注意，既然用了注解，要配置注解扫描：`<context:component-scan base-package="com.javadoop" />`
+
+甚至，我们可以像下面这样：
+
+```java
+public abstract class CommandManager {
+ 
+    public Object process(Object commandState) {
+        MyCommand command = createCommand();
+        command.setState(commandState);
+        return command.execute();
+    }
+ 
+    @Lookup
+    protected abstract MyCommand createCommand();
+}
+```
+
+> 上面的返回值用了 MyCommand，当然，如果 Command 只有一个实现类，那返回值也可以写 Command。
+
+replaced-method
+
+记住它的功能，就是替换掉 bean 中的一些方法。
+
+```java
+public class MyValueCalculator {
+ 
+    public String computeValue(String input) {
+        // some real code...
+    }
+ 
+    // some other methods...
+}
+```
+
+方法覆写，注意要实现 MethodReplacer 接口：
+
+```java
+public class ReplacementComputeValue implements org.springframework.beans.factory.support.MethodReplacer {
+ 
+    public Object reimplement(Object o, Method m, Object[] args) throws Throwable {
+        // get the input value, work with it, and return a computed result
+        String input = (String) args[0];
+        ...
+        return ...;
+    }
+}
+```
+
+配置也很简单：
+
+```xml
+<bean id="myValueCalculator" class="x.y.z.MyValueCalculator">
+    <!-- 定义 computeValue 这个方法要被替换掉 -->
+    <replaced-method name="computeValue" replacer="replacementComputeValue">
+        <arg-type>String</arg-type>
+    </replaced-method>
+</bean>
+ 
+<bean id="replacementComputeValue" class="a.b.c.ReplacementComputeValue"/>
+```
+
+> arg-type 明显不是必须的，除非存在方法重载，这样必须通过参数类型列表来判断这里要覆盖哪个方法。
+
+### BeanPostProcessor
+
+应该说 BeanPostProcessor 概念在 Spring 中也是比较重要的。我们看下接口定义：
+
+```java
+public interface BeanPostProcessor {
+ 
+   Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException;
+ 
+   Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException;
+ 
+}
+```
+
+看这个接口中的两个方法名字我们大体上可以猜测 bean 在初始化之前会执行 postProcessBeforeInitialization 这个方法，初始化完成之后会执行 postProcessAfterInitialization 这个方法。但是，这么理解是非常片面的。
+
+首先，我们要明白，除了我们自己定义的 BeanPostProcessor 实现外，Spring 容器在启动时自动给我们也加了几个。如在获取 BeanFactory 的 obtainFactory() 方法结束后的 prepareBeanFactory(factory)，大家仔细看会发现，Spring 往容器中添加了这两个 BeanPostProcessor：ApplicationContextAwareProcessor、ApplicationListenerDetector。
+
+我们回到这个接口本身，读者请看第一个方法，这个方法接受的第一个参数是 bean 实例，第二个参数是 bean 的名字，重点在返回值将会作为新的 bean 实例，所以，没事的话这里不能随便返回个 null。
+
+那意味着什么呢？我们很容易想到的就是，我们这里可以对一些我们想要修饰的 bean 实例做一些事情。但是对于 Spring 框架来说，它会决定是不是要在这个方法中返回 bean 实例的代理，这样就有更大的想象空间了。
+
+最后，我们说说如果我们自己定义一个 bean 实现 BeanPostProcessor 的话，它的执行时机是什么时候？
+
+如果仔细看了代码分析的话，其实很容易知道了，在 bean 实例化完成、属性注入完成之后，会执行回调方法，具体请参见类 AbstractAutowireCapableBeanFactory#initBean 方法。
+
+首先会回调几个实现了 Aware 接口的 bean，然后就开始回调 BeanPostProcessor 的 postProcessBeforeInitialization 方法，之后是回调 init-method，然后再回调 BeanPostProcessor 的 postProcessAfterInitialization 方法。
+
+## 总结
+
+按理说，总结应该写在附录前面，我就不讲究了。
+
+在花了那么多时间后，这篇文章终于算是基本写完了，大家在惊叹 Spring 给我们做了那么多的事的时候，应该透过现象看本质，去理解 Spring 写得好的地方，去理解它的设计思想。
+
+本文的缺陷在于对 Spring 预初始化 singleton beans 的过程分析不够，主要是代码量真的比较大，分支旁路众多。同时，虽然附录条目不少，但是庞大的 Spring 真的引出了很多的概念，希望日后有精力可以慢慢补充一些。
