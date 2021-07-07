@@ -232,6 +232,16 @@ NameServer可以看作是RocketMQ的注册中心，它管理两部分数据：�
 
 [3、RocketMQ-NameServer](https://www.jianshu.com/p/3d8d594d9161)
 
+
+
+https://blog.csdn.net/xinzun/article/details/105473195
+
+https://blog.csdn.net/xinzun/article/details/105474871
+
+https://blog.csdn.net/xinzun/article/details/105525617
+
+https://blog.csdn.net/xinzun/article/details/105525931
+
 # RocketMQ-实际使用
 
 
