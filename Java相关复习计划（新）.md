@@ -140,11 +140,11 @@
 
 ##### 缓存
 
-- [ ] Redis
+- [x] Redis
 
 ##### 消息中间件
 
-- [ ] RocketMQ
+- [x] RocketMQ
 - [ ] RabbitMQ
 
 ##### RPC框架

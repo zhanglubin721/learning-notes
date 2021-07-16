@@ -1256,12 +1256,356 @@ return new RpcResult(doInvoke(proxy, invocation.getMethodName(), invocation.getP
 protected Result doInvoke(final Invocation invocation)
 ```
 
-###  Dubbo的本地调用
+## Dubbo动态代理
 
-Dubbo是一个远程调用的框架，对于一个服务提供者，暴露了一个接口供外部消费者调用，
-那么对于提供者自己是否可以调用这个接口，需要什么特殊处理吗？
+直接代码实验
 
-injvm支持本地调用
-使用 Dubbo 本地调用不需做特殊配置，按正常 Dubbo 服务暴露服务即可。
-任一服务在暴露远程服务的同时，也会同时以 injvm 的协议暴露本地服务。
-injvm 是一个伪协议，不会像其他协议那样对外开启端口，只用于本地调用的目的。
+接口
+
+```java
+public interface BasePerson {
+    void doSth() ;
+    String getSth() ;
+}
+```
+
+接口实现类
+
+```java
+public class Person implements BasePerson {
+    @Override
+    public void doSth() {
+        System.out.println("Person 正在 努力工作");
+    }
+    @Override
+    public String getSth() {
+
+        System.out.println("person 正在 获取报酬");
+
+        return "good men";
+    }
+}
+```
+
+自己写一个InvocationHandler
+
+```java
+public class MyInvocationHandler implements InvocationHandler {
+
+    Object targetObj;
+
+    public MyInvocationHandler(Object obj) {
+        targetObj = obj;
+    }
+    @Override
+    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+        System.out.println("代理前置");
+        Object invoke = method.invoke(targetObj, args);
+        System.out.println("代理后置");
+        return invoke;
+    }
+}
+```
+
+测试类
+
+```java
+public class ProxyTest {
+
+    public static void main(String[] args) {
+
+        Person person = new Person();
+        Class<?>[] interfaces = Person.class.getInterfaces();
+        BasePerson proxyperson = (BasePerson) Proxy
+            .getProxy(interfaces)
+            .newInstance(new MyInvocationHandler(person));
+        String sth = proxyperson.getSth();
+        System.out.println(sth);
+    }
+}
+```
+
+结果
+
+```
+代理前置
+person 正在 获取报酬
+代理后置
+good men
+```
+
+proxy
+
+```java
+public static Proxy getProxy(Class<?>... ics) {
+    //先获取类加载器
+    return getProxy(ClassHelper.getClassLoader(Proxy.class), ics);
+}
+```
+
+主要方法
+
+```java
+public static Proxy getProxy(ClassLoader cl, Class<?>... ics) {
+    if (ics.length > 65535)
+        throw new IllegalArgumentException("interface limit exceeded");
+	//记载被代理类接口
+    StringBuilder sb = new StringBuilder();
+    for (int i = 0; i < ics.length; i++) {
+        String itf = ics[i].getName();
+        if (!ics[i].isInterface())
+            throw new RuntimeException(itf + " is not a interface.");
+
+        Class<?> tmp = null;
+        try {
+            tmp = Class.forName(itf, false, cl);
+        } catch (ClassNotFoundException e) {
+        }
+	   //当前使用的类加载器加载不到（所以一般用接口自己的类加载器加载）
+        if (tmp != ics[i])
+            throw new IllegalArgumentException(ics[i] + " is not visible from class loader");
+        sb.append(itf).append(';');
+    }
+
+    // 接口集的名字作为key
+    String key = sb.toString();
+
+    // 使用类加载器获取缓存
+    Map<String, Object> cache;
+    synchronized (ProxyCacheMap) {
+        cache = ProxyCacheMap.get(cl);
+        if (cache == null) {
+            cache = new HashMap<String, Object>();
+            ProxyCacheMap.put(cl, cache);
+        }
+    }
+
+    Proxy proxy = null;
+    synchronized (cache) {
+        do {
+            // 从缓存中获取
+            Object value = cache.get(key);
+            if (value instanceof Reference<?>) {
+                proxy = (Proxy) ((Reference<?>) value).get();
+                if (proxy != null)
+                    return proxy;
+            }
+
+            if (value == PendingGenerationMarker) {
+                try {
+                    cache.wait();
+                } catch (InterruptedException e) {
+                }
+            } else {
+                // 添加到缓存（value是一个标识）
+                cache.put(key, PendingGenerationMarker);
+                break;
+            }
+        }
+        while (true);
+    }
+	//自增id
+    long id = PROXY_CLASS_COUNTER.getAndIncrement();
+    
+    //以下就是使用javassist拼装代理类
+    String pkg = null;
+    ClassGenerator ccp = null, ccm = null;
+    try {
+        ccp = ClassGenerator.newInstance(cl);
+
+        Set<String> worked = new HashSet<String>();
+        List<Method> methods = new ArrayList<Method>();
+
+        for (int i = 0; i < ics.length; i++) {
+            if (!Modifier.isPublic(ics[i].getModifiers())) {
+                String npkg = ics[i].getPackage().getName();
+                if (pkg == null) {
+                    pkg = npkg;
+                } else {
+                    if (!pkg.equals(npkg))
+                        throw new IllegalArgumentException("non-public interfaces from different packages");
+                }
+            }
+            ccp.addInterface(ics[i]);
+
+            for (Method method : ics[i].getMethods()) {
+                String desc = ReflectUtils.getDesc(method);
+                if (worked.contains(desc))
+                    continue;
+                worked.add(desc);
+
+                int ix = methods.size();
+                Class<?> rt = method.getReturnType();
+                Class<?>[] pts = method.getParameterTypes();
+
+                StringBuilder code = new StringBuilder("Object[] args = new Object[").append(pts.length).append("];");
+                for (int j = 0; j < pts.length; j++)
+                    code.append(" args[").append(j).append("] = ($w)$").append(j + 1).append(";");
+                code.append(" Object ret = handler.invoke(this, methods[" + ix + "], args);");
+                if (!Void.TYPE.equals(rt))
+                    code.append(" return ").append(asArgument(rt, "ret")).append(";");
+
+                methods.add(method);
+                ccp.addMethod(method.getName(), method.getModifiers(), rt, pts, method.getExceptionTypes(), code.toString());
+            }
+        }
+
+        if (pkg == null)
+            pkg = PACKAGE_NAME;
+
+        // create ProxyInstance class.
+        String pcn = pkg + ".proxy" + id;
+        ccp.setClassName(pcn);
+        ccp.addField("public static java.lang.reflect.Method[] methods;");
+        ccp.addField("private " + InvocationHandler.class.getName() + " handler;");
+        ccp.addConstructor(Modifier.PUBLIC, new Class<?>[]{InvocationHandler.class}, new Class<?>[0], "handler=$1;");
+        ccp.addDefaultConstructor();
+        Class<?> clazz = ccp.toClass();
+        clazz.getField("methods").set(null, methods.toArray(new Method[0]));
+
+        // create Proxy class.
+        String fcn = Proxy.class.getName() + id;
+        ccm = ClassGenerator.newInstance(cl);
+        ccm.setClassName(fcn);
+        ccm.addDefaultConstructor();
+        ccm.setSuperClass(Proxy.class);
+        ccm.addMethod("public Object newInstance(" + InvocationHandler.class.getName() + " h){ return new " + pcn + "($1); }");
+        Class<?> pc = ccm.toClass();
+        proxy = (Proxy) pc.newInstance();
+    } catch (RuntimeException e) {
+        throw e;
+    } catch (Exception e) {
+        throw new RuntimeException(e.getMessage(), e);
+    } finally {
+        // release ClassGenerator
+        if (ccp != null)
+            ccp.release();
+        if (ccm != null)
+            ccm.release();
+        synchronized (cache) {
+            if (proxy == null)
+                cache.remove(key);
+            else
+                cache.put(key, new WeakReference<Proxy>(proxy));
+            cache.notifyAll();
+        }
+    }
+    return proxy;
+}
+```
+
+javassist拼接代理类，导出为.class文件如下
+
+```java
+package com.alibaba.dubbo.common.bytecode;
+
+import com.alibaba.dubbo.common.bytecode.ClassGenerator.DC;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import per.qiao.util.BasePerson;
+
+public class proxy0 implements DC, BasePerson {
+    public static Method[] methods;
+    private InvocationHandler handler;
+
+    public String getSth() {
+        Object[] var1 = new Object[0];
+        Object var2 = this.handler.invoke(this, methods[0], var1);
+        return (String)var2;
+    }
+
+    public void doSth() {
+        Object[] var1 = new Object[0];
+        this.handler.invoke(this, methods[1], var1);
+    }
+
+    public proxy0() {
+    }
+
+    public proxy0(InvocationHandler var1) {
+        this.handler = var1;
+    }
+}
+```
+
+## Dubbo线程池
+
+## Dubbo生产环境问题
+
+### dubbo提供者停止服务后zookeeper注册中心节点仍然存在
+
+dubbo2.7.1版本，zk会把dubbo节点注册为持久节点。
+
+```properties
+//public abstract class AbstractServiceConfig
+
+-- dubbo-2.7.3
+Whether to register as a dynamic service or not on register center, the value is true, the status will be enabled after the service registered,and it needs to be disabled manually; if you want to disable the service, you also need manual processing.
+(baidu翻译：是否在注册中心注册为动态服务，值为true，服务注册后状态为启用，需要手动禁用；如果要禁用该服务，还需要手动处理。）
+protected Boolean dynamic = true;
+
+-- dubbo-2.7.1
+Whether to register as a dynamic service or not on register center, it the value is false, the status will be disabled after the service registered,and it needs to be enabled manually; if you want to disable the service, you also need manual processing.
+（baidu翻译：是否在注册中心注册为动态服务，如果值为false，则服务注册后状态为禁用，需要手动启用；如果要禁用该服务，还需要手动处理。）
+protected Boolean dynamic = false;
+```
+
+解决办法，升级为2.7.3
+
+## Dubbo本地调用
+
+当一个应用既是一个服务的提供者，同时也是这个服务的消费者的时候，可以直接对本机提供的服务发起本地调用。从 `2.2.0` 版本开始，Dubbo 默认在本地以 *injvm* 的方式暴露服务，这样的话，在同一个进程里对这个服务的调用会优先走本地调用。
+
+与本地对象上方法调用不同的是，Dubbo 本地调用会经过 Filter 链，其中包括了 Consumer 端的 Filter 链以及 Provider 端的 Filter 链。通过这样的机制，本地消费者和其他消费者都是统一对待，统一监控，服务统一进行治理。
+
+![img](image/v2-12f2ed62564f594dbc4b6067611070f1_720w.jpg)
+
+同时，相比于远程调用来说，Dubbo 本地调用性能较优，省去了请求、响应的编解码及网络传输的过程。
+
+要使用 Dubbo 本地调用不需做特殊配置，按正常 Dubbo 服务暴露服务即可。任一服务在暴露远程服务的同时，也会同时以 *injvm* 的协议暴露本地服务。*injvm* 是一个伪协议，不会像其他协议那样对外开启端口，只用于本地调用的目的。
+
+```xml
+<dubbo:registry address="zookeeper://127.0.0.1:2181"/>
+<dubbo:protocol name="dubbo" port="20800"/>
+
+<bean id="demoServiceTarget" class="org.apache.dubbo.samples.local.impl.DemoServiceImpl"/>
+
+<dubbo:service interface="org.apache.dubbo.samples.local.api.DemoService" ref="demoServiceTarget"/>
+<dubbo:reference id="demoService" interface="org.apache.dubbo.samples.local.api.DemoService"/>
+```
+
+这里同时配置了同一服务 *DemoService* 的提供者以及消费者。在这种情况下，该应用中的 *DemoService*的消费方会优先使用 *injvm* 协议进行本地调用。
+
+同样的，服务消费者也支持通过 *scope* 来限定发起调用优先走本地，还是只走远程。比如，可以通过以下的方式强制消费端通过**远程调用**的方式来发起 dubbo 调用：
+
+```xml
+<!-- 服务消费者指定 scope="remote" -->
+<dubbo:reference id="demoService" interface="org.apache.dubbo.samples.local.api.DemoService" scope="remote"/>
+```
+
+```xml
+<!-- 服务消费者指定 scope="local" -->
+<dubbo:reference id="demoService" interface="org.apache.dubbo.samples.local.api.DemoService" scope="local"/> 
+```
+
+### 何时无法使用本地调用
+
+默认情况下，本地调用是自动开启的，不需要做额外的配置。只有当需要关闭的时候，才需要通过 *scope*的配置来显式的关闭。
+
+但是，特别需要指出的是，在下面的几种情况下，本地调用是无法使用的：
+
+第一，泛化调用的时候无法使用本地调用。
+
+第二，消费者明确指定 URL 发起直连调用。当然，如果消费者指定的是 *injvm* 的 URL，最终的调用也是走本地调用的
+
+### 强制打开本地调用
+
+除了通过 *scope* 来控制本地调用的行为之外，也可以通过 *injvm* 这个配置来强制打开或者禁用本地调用。
+
+```xml
+<dubbo:consumer injvm="false" .../>
+<dubbo:provider injvm="true" .../>
+```
+
+## @spi 与@Activate
+
