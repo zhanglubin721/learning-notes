@@ -275,7 +275,56 @@ final boolean transferForSignal(Node node) {
 
 Condition的其他例如`awaitNanos(long nanosTimeout)、signalAll()`等方法这里这里就不多赘述了，执行流程都差不多，同学们可以参考上述分析阅读。
 
-### synchronized和ReentrantLock的选择
+## 实际使用
+
+```Java
+public class ReentrantLockCondition implements Runnable {
+
+	public static ReentrantLock lock = new ReentrantLock();
+	public static Condition condition = lock.newCondition();
+ 
+    @Override
+    public void run() {
+        try {
+            lock.lock();
+            System.out.println("Thread is waiting! : " + System.currentTimeMillis());
+            condition.await();
+            System.out.println("Thread is going on! : " + System.currentTimeMillis());
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } finally {
+            lock.unlock();
+        }
+    }
+    
+	//测试
+	public static void main(String[] args) throws InterruptedException {
+        ReentrantLockCondition reen = new ReentrantLockCondition();
+        Thread thread = new Thread(reen);
+        thread.start();
+        Thread.sleep(3000);
+        //通知线程reen继续执行
+        lock.lock();
+        condition.signal();
+        lock.unlock();
+    }
+}
+
+//结果
+//Thread is waiting! : 1537841252752
+//Thread is going on! : 1537841255753
+```
+
+在代码的第4行，通过lock生成一个与之绑定的Confition对象，并在代码的第11行，要求线程在Condition对象上进行等待。代码的第27行，由main线程发出通知，告知等待Condition上的线程可以继续执行了；由输出结果来看，线程等待了3S后，继续执行了，符合我们预期。
+
+和Object.wait()和notify()方法一样，当线程使用Condition.await()时，要求线程持有相关的重入锁，在Condition.await()调用后，这个线程会释放这把锁；同理，在Condition.signal()方法调用时，也要求线程获得相应的锁。在signal()方法调用后，系统会从当前Condition对象的等待队列中，唤醒一个线程。一旦线程被唤醒，它会重新尝试获得与之绑定的重入锁，一旦获取成功，就可以继续执行了。因此在signal()方法调用后，一般需要释放相关的锁，如果省略掉代码的第28行，那么虽然唤醒了线程reen，但是由于线程无法重新获得锁，因而也就无法继续执行。
+
+Condition具有比wait()/notify()更好的灵活性，具体体现在：
+
+- 一个锁实例，可以绑定多个Condition实例，实现多路通知；
+- notify()方法进行通知时，是随机进行选择的，但重入锁结合Condition对象，可以实现有选择性的通知，这是非常重要的。
+
+## synchronized和ReentrantLock的选择
 
 > ReentrantLock在加锁和内存上提供的语义与内置锁synchronized相同，此外它还提供了一些其他功能，包括**定时的锁等待、可中断的锁等待、公平性，以及实现非块结构的加锁**。**从性能方面来说，在JDK5的早期版本中，ReentrantLock的性能远远好于synchronized，但是从JDK6开始，JDK在synchronized上做了大量优化，使得两者的性能差距不大。**synchronized的优点就是简洁。 所以说，两者之间的选择还是要看具体的需求，ReentrantLock可以作为一种高级工具，当需要一些高级功能时可以使用它。
 
