@@ -1,15 +1,5 @@
 # 爱康MQ升级设计文档
 
-- [问题描述](http://wiki.it.ikang.com/pages/viewpage.action?pageId=152285015#MQ升级设计文档-问题描述)
-- [业务流程](http://wiki.it.ikang.com/pages/viewpage.action?pageId=152285015#MQ升级设计文档-业务流程)
-- [ActiveMQ架构](http://wiki.it.ikang.com/pages/viewpage.action?pageId=152285015#MQ升级设计文档-ActiveMQ架构)
-- [RocketMQ架构](http://wiki.it.ikang.com/pages/viewpage.action?pageId=152285015#MQ升级设计文档-RocketMQ架构)
-- [ActiveMQ缺点](http://wiki.it.ikang.com/pages/viewpage.action?pageId=152285015#MQ升级设计文档-ActiveMQ缺点)
-- [选用RocketMQ原因](http://wiki.it.ikang.com/pages/viewpage.action?pageId=152285015#MQ升级设计文档-选用RocketMQ原因)
-- [系统影响](http://wiki.it.ikang.com/pages/viewpage.action?pageId=152285015#MQ升级设计文档-系统影响)
-
-
-
 
 
 # 问题描述
