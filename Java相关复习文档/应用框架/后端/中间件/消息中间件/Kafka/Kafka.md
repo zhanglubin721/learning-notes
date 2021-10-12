@@ -66,11 +66,21 @@ Follower跟随Leader，所有写请求都通过Leader路由，数据变更会广
 
 　　我们看上面的架构图中，producer就是生产者，是数据的入口。注意看图中的红色箭头，Producer在写入数据的时候**永远的找leader**，不会直接将数据写入follower！那leader怎么找呢？写入的流程又是什么样的呢？我们看下图：
 
-![](image/WeChat Screenshot_20190325215252.png)
+<img src="image/WeChat Screenshot_20190325215252.png" style="zoom:80%;" />
 
 发送的流程就在图中已经说明了，就不单独在文字列出来了！需要注意的一点是，消息写入leader后，follower是主动的去leader进行同步的！producer采用push模式将数据发布到broker，每条消息追加到分区中，顺序写入磁盘，所以保证**同一分区**内的数据是有序的！写入示意图如下：
 
-　![img](image/WeChat Screenshot_20190325215312.png)
+　<img src="image/WeChat Screenshot_20190325215312.png" alt="img" style="zoom:80%;" />
+
+生产者写入消息到topic, kafka将依据不同的策略将数据分配到不同的分区中
+
+1.轮询分区策略.
+
+2.随机分区策略
+
+3按key分区分配策略
+
+4.自定义分区策略 
 
 上面说到数据会写入到不同的分区，那kafka为什么要做分区呢？相信大家应该也能猜到，分区的主要目的是：
 　　**1、 方便扩展**。因为一个topic可以有多个partition，所以我们可以通过扩展机器去轻松的应对日益增长的数据量。
@@ -95,6 +105,8 @@ Follower跟随Leader，所有写请求都通过Leader路由，数据变更会广
 **Partition 结构**
 　　前面说过了每个topic都可以分为一个或多个partition，如果你觉得topic比较抽象，那partition就是比较具体的东西了！Partition在服务器上的表现形式就是一个一个的文件夹，每个partition的文件夹下面会有多组segment文件，每组segment文件又包含.index文件、.log文件、.timeindex文件（早期版本中没有）三个文件， log文件就实际是存储message的地方，而index和timeindex文件为索引文件，用于检索消息。
 
+Index负责映射每个offset到消息的在log文件中的具体位置，主要用来查找消息。
+
 　![img](image/WeChat Screenshot_20190325215337.png)
 
 如上图，这个partition有三组segment文件，每个log文件的大小是一样的，但是存储的message数量是不一定相等的（每条的message大小不一致）。文件的命名是以该segment最小offset来命名的，如000.index存储offset为0~368795的消息，kafka就是利用分段+索引的方式来解决查找效率的问题。
@@ -118,7 +130,7 @@ Follower跟随Leader，所有写请求都通过Leader路由，数据变更会广
 　　多个消费者可以组成一个消费者组（consumer group），每个消费者组都有一个组id！同一个消费组者的消费者可以消费同一topic下不同分区的数据，但是不会组内多个消费者消费同一分区的数据！！！是不是有点绕。我们看下图：
 ![img](image/WeChat Screenshot_20190325215326-16340174881255.png)
 
-图示是消费者组内的消费者小于partition数量的情况，所以会出现某个消费者消费多个partition数据的情况，消费的速度也就不及只处理一个partition的消费者的处理速度！如果是消费者组的消费者多于partition的数量，那会不会出现多个消费者消费同一个partition的数据呢？上面已经提到过不会出现这种情况！多出来的消费者不消费任何partition的数据。所以在实际的应用中，建议**消费者组的consumer的数量与partition的数量一致**！
+图示是消费者组内的消费者小于partition数量的情况，所以会出现某个消费者消费多个partition数据的情况，消费的速度也就不及只处理一个partition的消费者的处理速度！如果是消费者组的消费者多于partition的数量，多出来的消费者不消费任何partition的数据。所以在实际的应用中，建议**消费者组的consumer的数量与partition的数量一致**！
 　　在保存数据的小节里面，我们聊到了partition划分为多组segment，每个segment又包含.log、.index、.timeindex文件，存放的每条message包含offset、消息大小、消息体……我们多次提到segment和offset，查找消息的时候是怎么利用segment+offset配合查找的呢？假如现在需要查找一个offset为368801的message是什么样的过程呢？我们先看看下面的图：
 
 ![img](image/WeChat Screenshot_20190325215338.png)
