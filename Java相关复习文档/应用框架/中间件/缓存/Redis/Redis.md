@@ -4,13 +4,183 @@
 
 Redis 是开源免费的，遵守BSD协议，是一个高性能的key-value非关系型数据库。
 
-### redis单线程问题
+### redis单进程单线程
 
 所谓的单线程指的是网络请求模块使用了一个线程（所以不需考虑并发安全性），即一个线程处理所有网络请求，其他模块仍用了多个线程。
 
 redis采用多路复用机制：即多个网络socket复用一个io线程，实际是单个线程通过记录跟踪每一个Sock(I/O流)的状态来同时管理多个I/O流. 
 
- 
+**一、网络基础架构**
+
+![Redisç½ç»æ¶æååçº¿ç¨æ¨¡å](image/format,png.jpeg)
+
+这里解释下上图涉及的组件，Redis网络层基础组件主要包括四个部分：
+
+1）EventLoop事件轮询器，这部分实现在AE里面。
+
+2）提供Socket句柄事件的多路复用器，这部分分别对于不同平台提供了不同的实现，比如epoll和select可以用于Linux平台、kqueue可以用于苹果平台、evpoll可以用于Solaris平台，这里并没有看到iocp，也就是Redis对于Windows支持并不是很好。
+
+3）包括网络事件处理器实现的networking，这部分主要包括两个重要的事件处理器：acceptTcpHandler和acceptCommonHandler。
+
+4）处理网络比较底层的部分，比如网络句柄创建、网络的读写等。
+
+**二、单进程单线程模型**
+
+要理解Redis的单线程模型，我们先抛出一些问题，当我们有多个客户端同时去跟Redis Server建立连接，之后又同时对某个key进行操作，这个过程中发生了什么呢？会不会有并发问题？这些问题先丢在这了，我们看看Redis启动初始化的过程中会做什么事情，这里尽量省略了与本文无关的部分：
+
+1）初始化Redis Server参数，这部分代码通过initServerConfig实现。
+
+2）初始化Redis Server，这部分代码在initServer里面。
+
+3）启动事件轮询器。
+
+对，这里我们就把Redis的启动部分简化为三步，跟网络操作有关的主要在第二步和第三步里面，来看看initServer里面发生了什么：
+
+initServer流程
+![Redisç½ç»æ¶æååçº¿ç¨æ¨¡å](image/format,png-20211109140221499.jpeg)
+
+initServer里面首先创建了一个EventLoop，然后监听Server的IP对应的端口号，假设我们监听的是 127.0.0.1:3333 这个IP:端口对，我们得到的一个Server Socket句柄，最后通过createFileEvent将我们得到的Server Socket句柄和我们关心的网络事件mask注册到EventLoop上面。EventLoop是什么呢，我们看看它的定义：
+
+```java
+typedef struct aeEventLoop {
+    int maxfd;   /* highest file descriptor currently registered */
+    int setsize; /* max number of file descriptors tracked */
+    long long timeEventNextId;
+    time_t lastTime;     /* Used to detect system clock skew */
+    aeFileEvent *events; /* Registered events */
+    aeFiredEvent *fired; /* Fired events */
+    aeTimeEvent *timeEventHead;
+    int stop;
+    void *apidata; /* This is used for polling API specific data */
+    aeBeforeSleepProc *beforesleep;
+} aeEventLoop;
+```
+
+上面我们关注的主要是两个东西：events和fired。他们分别是两个数组，events用于存放被注册的事件以及相应的句柄，fired用于存放当EventLoop线程从多路复用器轮询到有事件的句柄的时候，EventLoop线程会把它放入fired数组里面，然后处理。
+
+![Redisç½ç»æ¶æååçº¿ç¨æ¨¡å](image/format,png-20211109140513346.jpeg)
+
+我用上面的示意图描述createFileEvent做的事情，就是将Server Socket句柄和关心的事件mask以及当事件产生的时候的事件处理器accptHandler生成一个aeFileEvent注册到EventLoop的events的数组里面，当然在这之前会首先将事件注册到多路复用器上，也就是epoll、kqueue等这些组件上。事件注册完之后需要对多路复用器进行轮询，来分离我们关心切发生的事件，那就是最后一步，启动事件轮询器。
+
+**接收网络连接**
+
+上面的步骤完成了服务端的网络初始化，而且事件轮询器已经开始工作了，事件轮询器做什么事情呢，就是不断轮询多路复用器，看看之前注册的事件有没有发生，如果有发生，则将会将事件分离出来，放入EventLoop的fired数组中，然后处理这些事件。
+
+很显然，上面注册的事件是客户端建立连接这个事件，因此当有两个客户端同时连接Redis服务器的时候，事件轮询器会从多路复用器上面分离出这个事件，同时调用acceptHandler来处理。acceptHandler做的事情主要是accept客户端的连接，创建socket句柄，然后将socket句柄和读事件注册到EventLoop的events数组里面，不一样的是对于客户端的事件处理器是readQueryClient。
+![Redisç½ç»æ¶æååçº¿ç¨æ¨¡å](image/format,png-20211109140548971.jpeg)
+
+上面示意图表示了acceptHandler处理客户端连接，得到句柄之后再将这个句柄注册到多路复用器以及EventLoop上的示意图。之后再同样再处理下一个客户端的连接，这些都是串行的。
+
+**事件轮询**
+
+上面接收客户端这部分其实都发生在事件轮询的主循环里面：
+
+```java
+void aeMain(aeEventLoop *eventLoop) {
+    eventLoop->stop = 0;
+    while (!eventLoop->stop) {
+        if (eventLoop->beforesleep != NULL)
+            eventLoop->beforesleep(eventLoop);
+        aeProcessEvents(eventLoop, AE_ALL_EVENTS);
+    }
+}
+```
+
+Redis会不断的轮询多路复用器，将网络事件分离出来，如果是accept事件，则新接收客户端连接并将其注册到多路复用器以及EventLoop中，如果是查询事件，则通过读取客户端的命令进行相应的处理，这一切都是单线程，顺序的执行的，因此不会发生并发问题。
+
+**三、高性能单线程模型**
+
+根据官方的测试结果《How fast is Redis？》来看，在操作内存的情况下，CPU 并不能起到决定性的作用，反而可能带来一些其他问题。比如锁，CPU 切换带来的性能开销等。这一点我们可以根据官方的测试报告，提供的数据来证明。而且官方提供的数据是可以达到100000+的QPS（每秒内查询次数），这个数据并不比采用单进程多线程 Memcached 差！所以在基于内存的操作，CPU 不是 Redis 瓶颈的情况下，瓶颈在网络 I/O 上面，我们一般提供较好的网络环境就可以提升Redis的吞吐量，比如提高网络带宽，除此之外还可以通过合并命令提交批处理请求来代替单条命令一次次请求从而减少网络开销，提高吞吐量。
+
+好了，说完单线程设计后，我们再来讨论讨论单线程的设计为什么能支持高并发？原因基本有以下几点：
+
+第一，我们请求 Redis 更多的是操作内存。直接操作内存就很快啊，数据存在内存中，类似于 HashMap。HashMap 的优势就是查找和操作的时间复杂度都是 O(1)。
+
+第二，单线程，没有 CPU 上下文切换带来的开销问题。而且上面也说了，内存操作和 CPU 的多核影响不大。直接采用单线程，就不用考虑各种锁，与之相关的加锁，解锁，死锁等问题就不复存在了。
+
+第三，多路 IO 复用。这个后面我会具体的来讲讲它。能谈到这一点说明对 Redis 有一定的理解。这涉及到基于操作系统的网络 IO 模型。Reactor 网络模式，epoll，poll，select，kqueue 等多路复用 IO。
+![img](image/format,png.png)
+
+第四，依赖第二点。由于是单线程的，所以就存在一个顺序读写问题。大家可以比较以下，随机读写和顺序读写的速度。
+
+第五，Redis 的数据结构，是经过专门的研究和设计的。所以操作起来简单且快。
+
+第六，Redis 自己构建了VM 机制 。因为一般的调用系统函数，会浪费一定的时间。
+
+综合以上内容，Redis 才有单线程，高性能的特点。
+
+最后，再说一点，Redis 是单进程和单线程的设计，并不是说它不能多进程多线程。比如备份时会 fork 一个新进程来操作；再比如基于 COW 原理的 RDB 操作就是多线程的。
+
+多路复用IO模型中，会有一个线程（Java中的Selector）不断去轮询多个socket的状态，只有当socket真正有读写事件时，才真正调用实际的IO读写操作。因为在多路复用IO模型中，只需要使用一个线程就可以管理多个socket，系统不需要建立新的进程或者线程，也不必维护这些线程和进程，并且只有在真正有socket读写事件进行时，才会使用IO资源，所以它大大减少了资源占用。
+
+**IO多路复用模型使用了Reactor设计模式实现了这一机制。Reactor模式有三种实现方式：**
+
+**Reactor单线程**
+
+![img](image/format,png-20211109140722118.png)
+
+每个客户端发起连接请求都会交给acceptor,acceptor根据事件类型交给线程handler处理，注意acceptor 处理和 handler 处理都在一个线程中处理，所以其中某个 handler 阻塞时, 会导致其他所有的 client 的 handler 都得不到执行, 并且更严重的是, handler 的阻塞也会导致整个服务不能接收新的 client 请求(因为 acceptor 也被阻塞了). 因为有这么多的缺陷, 因此单线程Reactor 模型用的比较少.
+
+Reactor多线程模式
+![img](image/format,png-20211109140754487.png)
+
+有专门一个线程, 即 Acceptor 线程用于监听客户端的TCP连接请求.
+
+客户端连接的 IO 操作都是由一个特定的 NIO 线程池负责. 每个客户端连接都与一个特定的 NIO 线程绑定, 因此在这个客户端连接中的所有 IO 操作都是在同一个线程中完成的.
+
+客户端连接有很多, 但是 NIO 线程数是比较少的, 因此一个 NIO 线程可以同时绑定到多个客户端连接中.
+
+**五种I/O模型介绍**
+
+IO 多路复用是5种I/O模型中的第3种，对各种模型讲个故事，描述下区别：
+
+故事情节为：老李去买火车票，三天后买到一张退票。参演人员（老李，黄牛，售票员，快递员），往返车站耗费1小时。
+
+**1.阻塞I/O模型**
+
+老李去火车站买票，排队三天买到一张退票。
+
+耗费：在车站吃喝拉撒睡 3天，其他事一件没干。
+
+**2.非阻塞I/O模型**
+
+老李去火车站买票，隔12小时去火车站问有没有退票，三天后买到一张票。
+
+耗费：往返车站6次，路上6小时，其他时间做了好多事。
+
+**3.I/O复用模型**
+
+1.select/poll
+
+老李去火车站买票，委托黄牛，然后每隔6小时电话黄牛询问，黄牛三天内买到票，然后老李去火车站交钱领票。 
+
+耗费：往返车站2次，路上2小时，黄牛手续费100元，打电话17次
+
+2.epoll
+
+老李去火车站买票，委托黄牛，黄牛买到后即通知老李去领，然后老李去火车站交钱领票。 
+
+耗费：往返车站2次，路上2小时，黄牛手续费100元，无需打电话
+
+**4.信号驱动I/O模型**
+
+老李去火车站买票，给售票员留下电话，有票后，售票员电话通知老李，然后老李去火车站交钱领票。 
+
+耗费：往返车站2次，路上2小时，免黄牛费100元，无需打电话
+
+**5.异步I/O模型**
+
+老李去火车站买票，给售票员留下电话，有票后，售票员电话通知老李并快递送票上门。 
+
+耗费：往返车站1次，路上1小时，免黄牛费100元，无需打电话
+
+1同2的区别是：自己轮询
+
+2同3的区别是：委托黄牛
+
+3同4的区别是：电话代替黄牛
+
+4同5的区别是：电话通知是自取还是送票上门
 
 ### Redis特点：
 
