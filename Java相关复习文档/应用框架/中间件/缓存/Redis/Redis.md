@@ -24,7 +24,182 @@ redis采用多路复用机制：即多个网络socket复用一个io线程，实�
 
 4）处理网络比较底层的部分，比如网络句柄创建、网络的读写等。
 
-**二、单进程单线程模型**
+#### Redis主进程调度核心EventLoop源码解析
+
+Redis输入分为两类
+
+1、系统内部产生的，主要是定时器触发的；比如，Redis的key支持超时，那么系统内部肯定会在一定的周期去检查哪些key超时了。这就是定时器触发的一个输入事件。
+
+2、系统外部产生的。这主要是一些IO事件。比如，用户在redis-cli输入一个命令，它最终是会通过socket传给server的，对于server来说，这是一个socket的IO事件。又比如，rdb的持久化过程，就是对磁盘文件的读写IO事件。在linux中，这些IO事件最终都可以转换为对一个FD（文件描述符）的读写事件。
+
+在redis-server的main函数中，最后会调用aeMain，这就是我们的主循环，必须放在main最后。代码走到这里就会一直在这个循环里面执行，除非退出。
+
+![img](image/20200823153345387.png)
+
+aeMain里面就是一个while循环了，它的执行条件eventLoop->stop正常情况下都是false，所以会一直循环。
+
+![img](image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2owMDEwNTg0MA==,size_16,color_FFFFFF,t_70.png)
+
+它里面调用了aeProcessEvents，这个函数就是最核心的循环处理入口了。下面我们重点分析这个函数。
+
+```c
+int aeProcessEvents(aeEventLoop *eventLoop, int flags)
+{
+    int processed = 0, numevents;
+ 
+    /* Nothing to do? return ASAP */
+    if (!(flags & AE_TIME_EVENTS) && !(flags & AE_FILE_EVENTS)) return 0;
+ 
+    /* Note that we want call select() even if there are no
+     * file events to process as long as we want to process time
+     * events, in order to sleep until the next time event is ready
+     * to fire. */
+	
+    // ae的事件有两种类型：fd的IO事件、定时器事件，如果都不存在，则不需要执行下面代码。
+    if (eventLoop->maxfd != -1 ||
+        ((flags & AE_TIME_EVENTS) && !(flags & AE_DONT_WAIT))) {
+        int j;
+        aeTimeEvent *shortest = NULL;
+        struct timeval tv, *tvp;
+ 
+        // 下面这一大段代码巴拉巴拉，其实都是在干一件事情，就是找到最近一个超时的定时器事件。
+        // 并且获取距离当前的这个时间间隔值。拿来做什么用呢？
+        // 为了避免“忙等待”，我们在检查FD的IO读写状态时（select或者epoll），都会采用阻塞的方式，如果没有可读可写的FD，就一直阻塞着等待。但是，我还有定时器事件要处理啊，如果一直没有IO事件，那我定时器事件不是一直没法处理么？
+        // 所以，我们会给select或者epoll传入一个阻塞的超时时间，超过这个时间，都给我返回。
+        // 下面获取的这个值，就是用于设置阻塞超时时间的。
+        // 这样做，既可以避免非阻塞式的忙等待，又可以保证定时器事件能够按时得到处理。
+        // 其实这种处理方式非常普遍，以C为开发语言的很多服务型软件都是这样玩的。
+ 
+        if (flags & AE_TIME_EVENTS && !(flags & AE_DONT_WAIT))
+            // 找到最近超时的定时器事件
+            shortest = aeSearchNearestTimer(eventLoop); 
+        if (shortest) { 
+            long now_sec, now_ms;
+ 
+            aeGetTime(&now_sec, &now_ms);
+            tvp = &tv;
+ 
+            /* How many milliseconds we need to wait for the next
+             * time event to fire? */
+            long long ms =
+                (shortest->when_sec - now_sec)*1000 +
+                shortest->when_ms - now_ms;
+			// 计算超时时间
+            if (ms > 0) {
+                tvp->tv_sec = ms/1000;
+                tvp->tv_usec = (ms % 1000)*1000;
+            } else {
+                // 已经有定时器超时了。采用非阻塞（tvp设置为0），立即返回。
+                tvp->tv_sec = 0;
+                tvp->tv_usec = 0;
+            }
+        } else {
+            /* If we have to check for events but need to return
+             * ASAP because of AE_DONT_WAIT we need to set the timeout
+             * to zero */
+            if (flags & AE_DONT_WAIT) {
+                tv.tv_sec = tv.tv_usec = 0;
+                tvp = &tv;
+            } else {
+                /* Otherwise we can block */
+                // 没有定时器事件？ 那就一直阻塞吧。
+                tvp = NULL; /* wait forever */
+            }
+        }
+        
+        // AE_DONT_WAIT表示强制不允许阻塞。这在TLS的场景中有用。
+        if (eventLoop->flags & AE_DONT_WAIT) {
+            tv.tv_sec = tv.tv_usec = 0;
+            tvp = &tv;
+        }
+ 
+		// select之前提供一个回调
+        if (eventLoop->beforesleep != NULL && flags & AE_CALL_BEFORE_SLEEP)
+            eventLoop->beforesleep(eventLoop);
+ 
+        /* Call the multiplexing API, will return only on timeout or when
+         * some event fires. */
+        // 这里面就是调select或者epoll。这就是网上老说的IO多路复用，很多把这个点作为redis高性能的一个重要原因来提。但是，IO多路复用不是很普遍吗？ 现在还有读socket不是这样多路复用的吗？
+        numevents = aeApiPoll(eventLoop, tvp);
+ 
+        /* After sleep callback. */
+		// select之后提供一个回调
+        if (eventLoop->aftersleep != NULL && flags & AE_CALL_AFTER_SLEEP)
+            eventLoop->aftersleep(eventLoop);
+ 
+		// 回调各个event的处理函数
+        for (j = 0; j < numevents; j++) {
+            aeFileEvent *fe = &eventLoop->events[eventLoop->fired[j].fd];
+            int mask = eventLoop->fired[j].mask;
+            int fd = eventLoop->fired[j].fd;
+            int fired = 0; /* Number of events fired for current fd. */
+ 
+            /* Normally we execute the readable event first, and the writable
+             * event laster. This is useful as sometimes we may be able
+             * to serve the reply of a query immediately after processing the
+             * query.
+             *
+             * However if AE_BARRIER is set in the mask, our application is
+             * asking us to do the reverse: never fire the writable event
+             * after the readable. In such a case, we invert the calls.
+             * This is useful when, for instance, we want to do things
+             * in the beforeSleep() hook, like fsynching a file to disk,
+             * before replying to a client. */
+            int invert = fe->mask & AE_BARRIER;
+ 
+            /* Note the "fe->mask & mask & ..." code: maybe an already
+             * processed event removed an element that fired and we still
+             * didn't processed, so we check if the event is still valid.
+             *
+             * Fire the readable event if the call sequence is not
+             * inverted. */
+            // 可读事件的回调处理
+            if (!invert && fe->mask & mask & AE_READABLE) {
+                fe->rfileProc(eventLoop,fd,fe->clientData,mask);
+                fired++;
+                fe = &eventLoop->events[fd]; /* Refresh in case of resize. */
+            }
+            
+            // 可写事件的回调处理
+            /* Fire the writable event. */
+            if (fe->mask & mask & AE_WRITABLE) {
+                if (!fired || fe->wfileProc != fe->rfileProc) {
+                    fe->wfileProc(eventLoop,fd,fe->clientData,mask);
+                    fired++;
+                }
+            }
+ 
+            /* If we have to invert the call, fire the readable event now
+             * after the writable one. */
+            if (invert) {
+                fe = &eventLoop->events[fd]; /* Refresh in case of resize. */
+                if ((fe->mask & mask & AE_READABLE) &&
+                    (!fired || fe->wfileProc != fe->rfileProc))
+                {
+                    fe->rfileProc(eventLoop,fd,fe->clientData,mask);
+                    fired++;
+                }
+            }
+ 
+            processed++;
+        }
+    }
+    /* Check time events */
+	// 处理定时器事件
+    if (flags & AE_TIME_EVENTS)
+        processed += processTimeEvents(eventLoop);
+ 
+    return processed; /* return the number of processed file/time events */
+}
+```
+
+eventloop的事件分为FD读写事件和定时器事件
+
+调用aeCreateFileEvent注册fd的AE_READABLE事件，并且给它注册一个回调函数ae_handler
+
+同一个系统中的fd都是内核分配的，全局的，所以fd是唯一的。redis为了查询效率，使用了数组events[]来存这些事件。这个数组在server_init就分配好了。这是空间换时间。
+
+#### 单进程单线程模型
 
 要理解Redis的单线程模型，我们先抛出一些问题，当我们有多个客户端同时去跟Redis Server建立连接，之后又同时对某个key进行操作，这个过程中发生了什么呢？会不会有并发问题？这些问题先丢在这了，我们看看Redis启动初始化的过程中会做什么事情，这里尽量省略了与本文无关的部分：
 
@@ -88,7 +263,7 @@ void aeMain(aeEventLoop *eventLoop) {
 
 Redis会不断的轮询多路复用器，将网络事件分离出来，如果是accept事件，则新接收客户端连接并将其注册到多路复用器以及EventLoop中，如果是查询事件，则通过读取客户端的命令进行相应的处理，这一切都是单线程，顺序的执行的，因此不会发生并发问题。
 
-**三、高性能单线程模型**
+#### 高性能单线程模型
 
 根据官方的测试结果《How fast is Redis？》来看，在操作内存的情况下，CPU 并不能起到决定性的作用，反而可能带来一些其他问题。比如锁，CPU 切换带来的性能开销等。这一点我们可以根据官方的测试报告，提供的数据来证明。而且官方提供的数据是可以达到100000+的QPS（每秒内查询次数），这个数据并不比采用单进程多线程 Memcached 差！所以在基于内存的操作，CPU 不是 Redis 瓶颈的情况下，瓶颈在网络 I/O 上面，我们一般提供较好的网络环境就可以提升Redis的吞吐量，比如提高网络带宽，除此之外还可以通过合并命令提交批处理请求来代替单条命令一次次请求从而减少网络开销，提高吞吐量。
 
@@ -130,7 +305,7 @@ Reactor多线程模式
 
 客户端连接有很多, 但是 NIO 线程数是比较少的, 因此一个 NIO 线程可以同时绑定到多个客户端连接中.
 
-**五种I/O模型介绍**
+#### 五种I/O模型介绍
 
 IO 多路复用是5种I/O模型中的第3种，对各种模型讲个故事，描述下区别：
 
