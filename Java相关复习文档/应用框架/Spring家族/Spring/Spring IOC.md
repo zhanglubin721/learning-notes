@@ -2094,6 +2094,34 @@ protected Object initializeBean(final String beanName, final Object bean, RootBe
 
 大家发现没有，BeanPostProcessor 的两个回调都发生在这边，只不过中间处理了 init-method，是不是和读者原来的认知有点不一样了？
 
+## 自我理解
+
+IOC容器初始化过程
+
+加载：读取xml
+
+解析：DefaultBeanDefinitionDocumentReader解析<bean>标签
+
+处理：将Element对象转化成了BeanDefinitionHolder对象
+
+注册：存到DefaultListableBeanFactory的map中
+
+注解方式
+
+扫描@Configuration注解
+
+获取配置类中所有的@bean注解标记的类
+
+构造BeanDefinition和BeanDefinitionHolder（BeanDefinitionHolder是BeanDefinition + beanName合一的包装类，RootBeanDefinition是BeanDefinitionHolder和一些状态字段的包装类），并存到DefaultListableBeanFactory的map里
+
+获取bean的Class，根据Class获取构造函数
+
+如果该bean !抽象&&单例&&!懒加载 立即初始化该bean并存到map中
+
+除上面这种情况，当用到bean时去取RootBeanDefinition，并初始化
+
+
+
 ## 附录
 
 ### id 和 name
