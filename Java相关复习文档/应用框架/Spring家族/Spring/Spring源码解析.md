@@ -533,8 +533,7 @@ public void preInstantiateSingletons() throws BeansException {
             isEagerInit = AccessController.doPrivileged((PrivilegedAction<Boolean>)
                                                         ((SmartFactoryBean<?>) factory)::isEagerInit,
                                                         getAccessControlContext());
-          }
-          else {
+          } else {
             isEagerInit = (factory instanceof SmartFactoryBean &&
                            ((SmartFactoryBean<?>) factory).isEagerInit());
           }
@@ -542,8 +541,7 @@ public void preInstantiateSingletons() throws BeansException {
             getBean(beanName);
           }
         }
-      }
-      else {
+      } else {
         //获取bean
         getBean(beanName);
       }
@@ -561,8 +559,7 @@ public void preInstantiateSingletons() throws BeansException {
           smartSingleton.afterSingletonsInstantiated();
           return null;
         }, getAccessControlContext());
-      }
-      else {
+      } else {
         smartSingleton.afterSingletonsInstantiated();
       }
     }
@@ -625,18 +622,15 @@ protected <T> T doGetBean(final String name, @Nullable final Class<T> requiredTy
       if (isSingletonCurrentlyInCreation(beanName)) {
         logger.debug("Returning eagerly cached instance of singleton bean '" + beanName +
                      "' that is not fully initialized yet - a consequence of a circular reference");
-      }
-      else {
+      } else {
         logger.debug("Returning cached instance of singleton bean '" + beanName + "'");
       }
     }
     bean = getObjectForBeanInstance(sharedInstance, name, beanName, null);
-  }
-
-  else {
+  } else {
     // Fail if we're already creating this bean instance:
     // We're assumably within a circular reference.
-    //若出现循环依赖，判断bean是不是单利的不是就抛出异常
+    //若出现循环依赖，判断bean是不是单例，不是就抛出异常
     if (isPrototypeCurrentlyInCreation(beanName)) {
       throw new BeanCurrentlyInCreationException(beanName);
     }
@@ -650,12 +644,10 @@ protected <T> T doGetBean(final String name, @Nullable final Class<T> requiredTy
       if (parentBeanFactory instanceof AbstractBeanFactory) {
         return ((AbstractBeanFactory) parentBeanFactory).doGetBean(
           nameToLookup, requiredType, args, typeCheckOnly);
-      }
-      else if (args != null) {
+      } else if (args != null) {
         // Delegation to parent with explicit args.
         return (T) parentBeanFactory.getBean(nameToLookup, args);
-      }
-      else {
+      } else {
         // No args -> delegate to standard getBean method.
         return parentBeanFactory.getBean(nameToLookup, requiredType);
       }
@@ -683,8 +675,7 @@ protected <T> T doGetBean(final String name, @Nullable final Class<T> requiredTy
           registerDependentBean(dep, beanName);
           try {
             getBean(dep);
-          }
-          catch (NoSuchBeanDefinitionException ex) {
+          } catch (NoSuchBeanDefinitionException ex) {
             throw new BeanCreationException(mbd.getResourceDescription(), beanName,
                                             "'" + beanName + "' depends on missing bean '" + dep + "'", ex);
           }
@@ -699,8 +690,7 @@ protected <T> T doGetBean(final String name, @Nullable final Class<T> requiredTy
           try {
             //正式开始创建bean实例
             return createBean(beanName, mbd, args);
-          }
-          catch (BeansException ex) {
+          } catch (BeansException ex) {
             // Explicitly remove instance from singleton cache: It might have been put there
             // eagerly by the creation process, to allow for circular reference resolution.
             // Also remove any beans that received a temporary reference to the bean.
@@ -709,22 +699,17 @@ protected <T> T doGetBean(final String name, @Nullable final Class<T> requiredTy
           }
         });
         bean = getObjectForBeanInstance(sharedInstance, name, beanName, mbd);
-      }
-
-      else if (mbd.isPrototype()) {
+      } else if (mbd.isPrototype()) {
         // It's a prototype -> create a new instance.
         Object prototypeInstance = null;
         try {
           beforePrototypeCreation(beanName);
           prototypeInstance = createBean(beanName, mbd, args);
-        }
-        finally {
+        } finally {
           afterPrototypeCreation(beanName);
         }
         bean = getObjectForBeanInstance(prototypeInstance, name, beanName, mbd);
-      }
-
-      else {
+      } else {
         String scopeName = mbd.getScope();
         final Scope scope = this.scopes.get(scopeName);
         if (scope == null) {
@@ -735,22 +720,16 @@ protected <T> T doGetBean(final String name, @Nullable final Class<T> requiredTy
             beforePrototypeCreation(beanName);
             try {
               return createBean(beanName, mbd, args);
-            }
-            finally {
+            } finally {
               afterPrototypeCreation(beanName);
             }
           });
           bean = getObjectForBeanInstance(scopedInstance, name, beanName, mbd);
-        }
-        catch (IllegalStateException ex) {
-          throw new BeanCreationException(beanName,
-                                          "Scope '" + scopeName + "' is not active for the current thread; consider " +
-                                          "defining a scoped proxy for this bean if you intend to refer to it from a singleton",
-                                          ex);
+        } catch (IllegalStateException ex) {
+          throw new BeanCreationException(beanName,"Scope '" + scopeName + "' is not active for the current thread; consider " + "defining a scoped proxy for this bean if you intend to refer to it from a singleton", ex);
         }
       }
-    }
-    catch (BeansException ex) {
+    } catch (BeansException ex) {
       cleanupAfterBeanCreationFailure(beanName);
       throw ex;
     }
@@ -765,8 +744,7 @@ protected <T> T doGetBean(final String name, @Nullable final Class<T> requiredTy
         throw new BeanNotOfRequiredTypeException(name, requiredType, bean.getClass());
       }
       return convertedBean;
-    }
-    catch (TypeMismatchException ex) {
+    } catch (TypeMismatchException ex) {
       if (logger.isDebugEnabled()) {
         logger.debug("Failed to convert bean '" + name + "' to required type '" +
                      ClassUtils.getQualifiedName(requiredType) + "'", ex);
@@ -869,9 +847,7 @@ public Object getSingleton(String beanName, ObjectFactory<?> singletonFactory) {
     Object singletonObject = this.singletonObjects.get(beanName);
     if (singletonObject == null) {
       if (this.singletonsCurrentlyInDestruction) {
-        throw new BeanCreationNotAllowedException(beanName,
-                                                  "Singleton bean creation not allowed while singletons of this factory are in destruction " +
-                                                  "(Do not request a bean from a BeanFactory in a destroy method implementation!)");
+        throw new BeanCreationNotAllowedException(beanName, "Singleton bean creation not allowed while singletons of this factory are in destruction " + "(Do not request a bean from a BeanFactory in a destroy method implementation!)");
       }
       if (logger.isDebugEnabled()) {
         logger.debug("Creating shared instance of singleton bean '" + beanName + "'");
@@ -1458,9 +1434,9 @@ protected void doClose() {
 
 3. dependsOn指的是要先进行实例化的bean，也就是有beanA和beanB，如果用注解在beanB上加上@DependsOn(beanA)，那么在创建 beanB之前一点更要先创建beanA，和依赖不同，依赖是指在创建beanB的过程中去创建beanA。
 
-## 循环依赖
+# 循环依赖
 
-### 源码解析
+## 源码解析
 
 所谓Spring的循环依赖，指的是这样一种场景：
 
@@ -1520,11 +1496,11 @@ protected Object getSingleton(String beanName, boolean allowEarlyReference) {
 
 这个方法是Spring解决循环依赖的关键方法，在这个方法中，使用了三层列表来查询的方式，这三层列表分别是：
 
-> singletonObjects
+> 一级缓存：singletonObjects
 >
-> earlySingletonObjects
+> 二级缓存：earlySingletonObjects
 >
-> singletonFactories
+> 三级缓存：singletonFactories
 
 这个方法中用到的几个判断逻辑，体现了Spring解决循环依赖的思路，不过实际上对象被放入这三层的顺序是和方法查询的循序相反的，也就是说，在循环依赖出现时，对象往往会先进入singletonFactories，然后earlySingletonObjects，然后singletonObjects。
 
@@ -1609,7 +1585,7 @@ protected void addSingleton(String beanName, Object singletonObject) {
 
 ![image-20211117103838799](image/image-20211117103838799-7116720.png)
 
-### 具体示例
+## 具体示例
 
 BeanA
 
@@ -1678,7 +1654,7 @@ public class MainTest {
 
 **断点调试**
 
-经过多次断点调试，发现doCreateBean的调用构造器创建对象的时候报错的因此，断点进入
+经过多次断点调试，发现doCreateBean的调用构造器创建对象的时候报错，因此断点进入
 
 ```java
 //使用合适的实例化策略来创建新的实例：工厂方法、构造函数自动注入、简单初始化
@@ -1808,8 +1784,7 @@ public BeanWrapper autowireConstructor(String beanName, RootBeanDefinition mbd,
       try {
         candidates = (mbd.isNonPublicAccessAllowed() ?
                       beanClass.getDeclaredConstructors() : beanClass.getConstructors());
-      }
-      catch (Throwable ex) {
+      } catch (Throwable ex) {
         throw new BeanCreationException(mbd.getResourceDescription(), beanName,
                                         "Resolution of declared constructors on bean Class [" + beanClass.getName() +
                                         "] from ClassLoader [" + beanClass.getClassLoader() + "] failed", ex);
@@ -1844,8 +1819,7 @@ public BeanWrapper autowireConstructor(String beanName, RootBeanDefinition mbd,
           }
           argsHolder = createArgumentArray(beanName, mbd, resolvedValues, bw, paramTypes, paramNames,
                                            getUserDeclaredConstructor(candidate), autowiring);
-        }
-        catch (UnsatisfiedDependencyException ex) {
+        } catch (UnsatisfiedDependencyException ex) {
           if (logger.isTraceEnabled()) {
             logger.trace("Ignoring constructor [" + candidate + "] of bean '" + beanName + "': " + ex);
           }
@@ -1921,8 +1895,7 @@ public BeanWrapper autowireConstructor(String beanName, RootBeanDefinition mbd,
 
     bw.setBeanInstance(beanInstance);
     return bw;
-  }
-  catch (Throwable ex) {
+  } catch (Throwable ex) {
     throw new BeanCreationException(mbd.getResourceDescription(), beanName,
                                     "Bean instantiation via constructor failed", ex);
   }
@@ -2144,7 +2117,7 @@ protected void beforeSingletonCreation(String beanName) {
 
 **3.使用@Autowired注解变量是否会出现循环依赖**
 
-使用注解变量的方式引入的时候，在createBeanInstance的时候不会再构造器中加载beanB，beanB会生成一个为null的早期对象
+使用注解变量的方式引入的时候，在createBeanInstance的时候不会在构造器中加载beanB，beanB会生成一个为null的早期对象
 
 ![clipboard-2](image/clipboard-2.png)
 
@@ -2168,11 +2141,11 @@ protected void beforeSingletonCreation(String beanName) {
 
 ![clipboard-8](image/clipboard-8.png)
 
-在doGetBean的时候会调用getSingleton(beanName)从三级缓存取值，然后就取到了beanA，然后就奖beanA赋值给beanB中的beanA对象
+在doGetBean的时候会调用getSingleton(beanName)从三级缓存取值，然后就取到了beanA，然后就将beanA赋值给beanB中的beanA对象
 
 ![clipboard-9](image/clipboard-9.png)
 
-这个时候beanB中的beanA就不是早起对象了，已经被赋值了
+这个时候beanB中的beanA就不是早期对象了，已经被赋值了
 
 ![clipboard-10](image/clipboard-10.png)
 
@@ -2183,3 +2156,5 @@ protected void beforeSingletonCreation(String beanName) {
 然后都获取到了值，循环结束
 
 再创建beanB的时候因为缓存中已经有了，所以就直接可以取了
+
+**当使用构造器的方式循环依赖时会报错，解决办法是使用@Autowired或者setter引入依赖**
