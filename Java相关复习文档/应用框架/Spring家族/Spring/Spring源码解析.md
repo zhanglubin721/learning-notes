@@ -2707,3 +2707,5 @@ public AopProxy createAopProxy(AdvisedSupport config) throws AopConfigException 
 ```
 
 如果目标类是接口就一定会使用jdk代理，如果目标类没有可以代理的接口就一定会使用Cglib代理。
+
+# 动态代理原理详见 动态代理.md
