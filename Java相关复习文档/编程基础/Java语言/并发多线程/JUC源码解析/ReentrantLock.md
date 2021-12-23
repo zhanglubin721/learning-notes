@@ -297,8 +297,8 @@ public class ReentrantLockCondition implements Runnable {
         }
     }
     
-	//测试
-	public static void main(String[] args) throws InterruptedException {
+		//测试
+		public static void main(String[] args) throws InterruptedException {
         ReentrantLockCondition reen = new ReentrantLockCondition();
         Thread thread = new Thread(reen);
         thread.start();
