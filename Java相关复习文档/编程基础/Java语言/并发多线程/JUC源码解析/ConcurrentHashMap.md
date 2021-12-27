@@ -178,6 +178,34 @@ static final <K,V> Node<K,V> tabAt(Node<K,V>[] tab, int i) {
 
 采用Unsafe.getObjectVolatie()来获取，而不是直接用table[index]的原因跟ConcurrentHashMap的弱一致性有关。在java内存模型中，我们已经知道每个线程都有一个工作内存，里面存储着table的副本，虽然table是volatile修饰的，但不能保证线程每次都拿到table中的最新元素，Unsafe.getObjectVolatile可以直接获取指定内存的数据，保证了每次拿到数据都是最新的。
 
+### get操作
+
+```java
+public V get(Object key) {
+    Node<K,V>[] tab; Node<K,V> e, p; int n, eh; K ek;
+    int h = spread(key.hashCode());
+    if ((tab = table) != null && (n = tab.length) > 0 &&
+        (e = tabAt(tab, (n - 1) & h)) != null) {
+        if ((eh = e.hash) == h) {
+            if ((ek = e.key) == key || (ek != null && key.equals(ek)))
+                return e.val;
+        }
+        else if (eh < 0)
+            return (p = e.find(h, key)) != null ? p.val : null;
+        while ((e = e.next) != null) {
+            if (e.hash == h &&
+                ((ek = e.key) == key || (ek != null && key.equals(ek))))
+                return e.val;
+        }
+    }
+    return null;
+}
+```
+
+读取的时候，我们没有看见锁到存在，说明读不受多线程影响。
+
+对比ConcurrentHashMap和HashTable,我们可以明显的看到，ConcurrentHashMap在写的时候，并没有锁住整个节点数组，在新节点上使用的是无锁竞争，在老节点上锁住的仅仅是一个节点，读的时候如果不是恰好读到写线程写入相同Hash值的位置，不受影响(可以认为我们的操作一般是读多写少，这种几率也比较低)。而HashTable是对整个节点数组进行锁定，读到时候不能写，写的时候不能读，这么一对比就可以明显感觉到性能差距是巨大的。
+
 ### table 扩容
 
 什么时候会触发扩容？
