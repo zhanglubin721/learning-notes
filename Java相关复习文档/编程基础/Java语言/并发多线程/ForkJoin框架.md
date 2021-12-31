@@ -607,7 +607,7 @@ private ForkJoinPool(int parallelism,
 }
 ```
 
-**看完初始化的代码我们可以知道原来创建\**ForkJoinPool创建workerThread的工作都是统一由一个叫\**ForkJoinWorkerThreadFactory的工厂去创建，创建出来的线程都有一个统一的前辍名称"ForkJoinPool-" + nextPoolId() + "-worker-".****队列出队模式是LIFO(后进先出)，那这样后面的入队的任务是会被先处理的。所以上面代码到50个分岔，越后面的任务会越先处理，这其实是对代码的一种优化！**
+**看完初始化的代码我们可以知道原来创建ForkJoinPool创建workerThread的工作都是统一由一个叫ForkJoinWorkerThreadFactory的工厂去创建，创建出来的线程都有一个统一的前辍名称"ForkJoinPool-" + nextPoolId() + "-worker-".**队列出队模式是LIFO(后进先出)，那这样后面的入队的任务是会被先处理的。所以上面代码到50个分岔，越后面的任务会越先处理，这其实是对代码的一种优化！
 
 提交我们用的是submit()方法，我们来看一下该方法的源代码
 
