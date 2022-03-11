@@ -121,7 +121,7 @@ Paxos的版本有: **Basic Paxos** , **Multi Paxos**, **Fast-Paxo**s, 具体落�
 
 ![img](image/v2-5f5707b96694f05ccbce31da0aa2be15_1440w.jpg)
 
-### Basic Paxos相关概念
+### Basic Paxos
 
 **1. 角色介绍** 
 
@@ -184,7 +184,7 @@ Proposer在提出提案之后但在达成协议之前失败。具体来说，传
 
 ![img](image/v2-0dc89d738b2b70bb447859fba8dd21b5_1440w.jpg)
 
-**Multi-Paxos流程图** 
+### Multi-Paxos 
 
 针对basic Paxos是存在一定得问题,首先就是**流程复杂,实现及其困难**, 其次**效率低**(达成一致性需要2轮 RPC调用),针对basic Paxos流程进行拆分为**选举**和**复制**的过程。
 
