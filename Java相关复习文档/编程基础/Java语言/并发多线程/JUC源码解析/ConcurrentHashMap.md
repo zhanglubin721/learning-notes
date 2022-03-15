@@ -105,7 +105,7 @@ final V putVal(K key, V value, boolean onlyIfAbsent) {
             tab = helpTransfer(tab, f); 
         else {  // hash冲突
             V oldVal = null;
-            synchronized (f) {
+            synchronized (f) {//拿node节点作为锁
                 if (tabAt(tab, i) == f) {  // 链表头节点
                     if (fh >= 0) {
                         binCount = 1;

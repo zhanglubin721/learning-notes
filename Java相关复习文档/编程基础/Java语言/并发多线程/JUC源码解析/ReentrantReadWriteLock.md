@@ -1,5 +1,64 @@
 # ReentrantReadWriteLock
 
+先说结论，读写锁中读锁是共享锁，写锁是独占锁，当发生写操作时其他的读写都会停止
+
+实际使用例子
+
+```java
+@Service
+@Slf4j
+public class DimensionStatisticalReadWriteLock {
+
+    public static final HashMap<String, DimensionStatisticalData> REPORT_DIMENSION_STATISTICAL_AS_OF_YESTERDAY_CACHE = new HashMap<>();
+
+    private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
+
+    @Autowired
+    private StatisticalReportsService statisticalReportsService;
+
+    //读
+    public DimensionStatisticalData get(String searchKey) {
+        //上读锁
+        readWriteLock.readLock().lock();
+        try {
+            return REPORT_DIMENSION_STATISTICAL_AS_OF_YESTERDAY_CACHE.get(searchKey);
+        } finally {
+            //释放读锁
+            readWriteLock.readLock().unlock();
+        }
+    }
+
+    //写
+    public DimensionStatisticalData getStatisticalDataAndPutCache(LocalDateTime localDateTimeEnd) throws IllegalArgumentException {
+        readWriteLock.writeLock().lock();
+        try {
+            String searchKey = localDateTimeEnd.format(ShareConstant.DTF_DATE_FORMAT_DATETIME_YEAR_MONTH_DAY);
+            DimensionStatisticalData dimensionStatisticalDataBySearchKey = REPORT_DIMENSION_STATISTICAL_AS_OF_YESTERDAY_CACHE.get(searchKey);
+            if (dimensionStatisticalDataBySearchKey != null) {
+                return dimensionStatisticalDataBySearchKey;
+            } else {
+                DimensionStatisticalData dimensionStatisticalData = statisticalReportsService.reportDimensionStatistical(null, localDateTimeEnd);
+                REPORT_DIMENSION_STATISTICAL_AS_OF_YESTERDAY_CACHE.put(searchKey, dimensionStatisticalData);
+                return dimensionStatisticalData;
+            }
+        } catch (Exception e) {
+            log.info("查询历史至今维度数据异常：{}", e);
+            log.error("查询历史至今维度数据异常：{}", e);
+            throw new RuntimeException();
+        } finally {
+            readWriteLock.writeLock().unlock();
+        }
+    }
+
+    public void clearReportDimensionStatisticalAsOfYesterdayCache() {
+        REPORT_DIMENSION_STATISTICAL_AS_OF_YESTERDAY_CACHE.clear();
+    }
+
+}
+```
+
+
+
 ## 概述
 
 > 在AQS一篇中我们对“独占锁”和“共享锁”做了简单说明。在J.U.C中，共享锁包括CountDownLatch、CyclicBarrier、Semaphore、ReentrantReadWriteLock、JDK1.8新增的StampedLock等，本篇我们将对ReentrantReadWriteLock做详细分析。
