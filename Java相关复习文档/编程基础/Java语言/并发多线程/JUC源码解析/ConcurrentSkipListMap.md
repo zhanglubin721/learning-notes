@@ -1,5 +1,13 @@
 # ConcurrentSkipListMap
 
+
+
+## 跳表详细讲解请看Redis的存储原理文章
+
+这里只讲解根据跳表实现的ConcurrentSkipListMap
+
+
+
 ## ConcurrentSkipListMap 的结构
 
 ConcurrentSkipListMap 的节点主要由 Node, Index, HeadIndex 构成;下面是一个典型的ConcurrentSkipListMap 的实例的结构图：
