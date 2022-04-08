@@ -475,7 +475,13 @@ public long transferFrom(FileChannel fileChannel, long position, long count) thr
 
 注： transferTo 和 transferFrom 并不保证一定能使用零拷贝。实际上是否能使用零拷贝与操作系统相关，如果操作系统提供 sendfile 这样的零拷贝系统调用，则这两个方法会通过这样的系统调用充分利用零拷贝的优势，否则并不能通过这两个方法本身实现零拷贝。
 
-------
+## Kafka分区消费模式
+
+![image-20220406113743737](image/image-20220406113743737-9216264.png)
+
+ 
+
+<img src="image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2FzZGZzYWRmYXNkZnNh,size_16,color_FFFFFF,t_70.png" alt="img" style="zoom: 67%;" />
 
 ## **Kafka总结**
 
