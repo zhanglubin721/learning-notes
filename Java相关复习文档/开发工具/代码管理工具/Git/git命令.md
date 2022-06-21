@@ -93,3 +93,4 @@ git reset -hard 版本号 # 同时将代码恢复到前一个commit_id 对应的
 git reset --merge 
 ```
 
+![image-20220620142229769](image/image-20220620142229769-5706153.png)
