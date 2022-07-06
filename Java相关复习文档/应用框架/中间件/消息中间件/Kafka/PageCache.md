@@ -25,6 +25,34 @@
 
 2.6内核中的buffer cache和page cache在处理上是保持一致的，但是存在概念上的差别，page cache是针对文件的cache，buffer是针对磁盘块数据的cache，仅此而已。
 
+"**计算机科学领域的任何问题都可以通过增加一个间接的中间层来解决**"，PageCache是这句话很好的一个解释。在操作系统实现中，数据在内存中是按页存储的，而PageCache顾名思义就是内存页的缓存，我们在用户态读写数据其实都是在读写PageCache，在由操作系统的内核线程将数据刷新到磁盘。可以想象到，用户写入的数据，首先写到了PageCache中进行保存，用户想读取这部分数据的时候，就可以直接在内存中直接读取，这个样就避免了磁盘IO，提升了速度。另外当用户从磁盘读取一段很小的数据的时候，文件系统其实会将磁盘上的这段数据之后的一段连续的数据加载到PageCache中，下次如果想连续的读取数据，就可以直接在内存中进行读取了，这也是连续读的速度比随机读的速度快的原因之一--预读。当然这也有一定的弊端，如果用户的场景就是需要随机读，那么这时候预读就产生了不必要的开销。
+
+![img](image/v2-32c9e5fb1c395c1f2396e939ee2e897c_1440w.jpg)
+
+通过free命令可以观测到PageCache的大小，如图，其中buff/cache就是指PageCache的大小。
+
+![img](image/v2-ae16f041caf8ae6d517bb800e0224c6e_1440w.png)
+
+为了观察PageCache的变化，我还写了个非常简单的测试脚本，来观察PageCache的变化。
+
+```java
+public static void main(String[] args)  {
+    try {
+      BufferedWriter out = new BufferedWriter(new FileWriter("file.txt"));
+      for(int i = 0; i * 11 < 1024 * 1024 * 1024; i++) {
+        out.write("hello world");
+      }
+      out.close();
+    } catch (IOException e) {
+
+    }
+}
+```
+
+使用上面的代码，写入大约1g的文件，在使用free -s 1 每个1s输出free命令的结果，可以看到PageCache的变化。
+
+![img](image/v2-76a84e3777718a26ffb961663f58dcd9_1440w.jpg)
+
 ## 读cache
 
 当内核发起一个读请求时（例如进程发起read()请求），首先会检查请求的数据是否缓存到了page cache中。如果有，那么直接从内存中读取，不需要访问磁盘，这被称为cache命中（cache hit）。如果cache中没有请求的数据，即cache未命中（cache miss），就必须从磁盘中读取数据。然后内核将读取的数据缓存到cache中，这样后续的读请求就可以命中cache了。

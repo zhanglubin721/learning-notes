@@ -124,7 +124,8 @@ NameServer可以看作是RocketMQ的注册中心，它管理两部分数据：�
 `Queue不是真正存储Message的地方，真正存储Message的地方是在CommitLog`。
 
 如图
-![img](image/1090617-20190626235211016-2054524747.png)
+
+![在这里插入图片描述](image/d4ce81dc860540a896bfb65d03d47d9f.png)
 
 左边的是CommitLog。这个是真正存储消息的地方。RocketMQ所有生产者的消息都是往这一个地方存的。
 
