@@ -957,7 +957,7 @@ mysql> explain select * from student where name='Joe' and c_id=2 and phone='1350
 ②int 占4字节√
 
 **phone char(11),（占36字节）**
-①11字长（utf8字符集，一个字长3字节 ）113=33√
+①11字长（utf8字符集，一个字长3字节 ）11 * 3=33√
 
 int(xx) xx无论是多少 int永远4字节 xx只是填充占位符（一种标识 一般配合zerofill使用的）
 
