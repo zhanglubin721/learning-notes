@@ -68,24 +68,24 @@
 
 ```java
 public static void main(String[] args) {
-    initFlowRules();
-    while (true) {
-        Entry entry = null;
-        try {
-	    entry = SphU.entry("HelloWorld");
-            /*您的业务逻辑 - 开始*/
-            System.out.println("hello world");
-            /*您的业务逻辑 - 结束*/
-	} catch (BlockException e1) {
-            /*流控逻辑处理 - 开始*/
-	    System.out.println("block!");
-            /*流控逻辑处理 - 结束*/
-	} finally {
-	   if (entry != null) {
-	       entry.exit();
-	   }
-	}
+  initFlowRules();
+  while (true) {
+    Entry entry = null;
+    try {
+      entry = SphU.entry("HelloWorld");
+      /*您的业务逻辑 - 开始*/
+      System.out.println("hello world");
+      /*您的业务逻辑 - 结束*/
+    } catch (BlockException e1) {
+      /*流控逻辑处理 - 开始*/
+      System.out.println("block!");
+      /*流控逻辑处理 - 结束*/
+    } finally {
+      if (entry != null) {
+        entry.exit();
+      }
     }
+  }
 }
 
 private static void initFlowRules(){
@@ -114,7 +114,7 @@ private static void initFlowRules(){
 ok, 上面提到了一系列的slot都是在
 
 ```java
-	  entry = SphU.entry("HelloWorld");
+entry = SphU.entry("HelloWorld");
 ```
 
 中创建的，并且是**每个资源对应唯一一个slot chain**(ProcessorSlotChain)。
@@ -125,56 +125,56 @@ ok, 上面提到了一系列的slot都是在
 
 ```java
 public ProcessorSlotChain build() {
-        ProcessorSlotChain chain = new DefaultProcessorSlotChain();
-        chain.addLast(new NodeSelectorSlot());
-        chain.addLast(new ClusterBuilderSlot());
-        chain.addLast(new LogSlot());
-        chain.addLast(new StatisticSlot());
-        chain.addLast(new SystemSlot());
-        chain.addLast(new AuthoritySlot());
-        chain.addLast(new FlowSlot());
-        chain.addLast(new DegradeSlot());
+  ProcessorSlotChain chain = new DefaultProcessorSlotChain();
+  chain.addLast(new NodeSelectorSlot());
+  chain.addLast(new ClusterBuilderSlot());
+  chain.addLast(new LogSlot());
+  chain.addLast(new StatisticSlot());
+  chain.addLast(new SystemSlot());
+  chain.addLast(new AuthoritySlot());
+  chain.addLast(new FlowSlot());
+  chain.addLast(new DegradeSlot());
 
-        return chain;
-    }
+  return chain;
+}
 ```
 
 **资源与slot chain的对应关系存放在CtSph类全局静态变量chainMap中，CtSph继承于SphU，注意这个变量的修饰关键字。**资源对应的ProcessorSlotChain都是**pre-source**的，**即在第一次访问资源的时候ProcessorSlotChain就创建好，以后再也不用创建，因为创建好之后会存放在chainMap中。**
 
 ```java
-    /**
+/**
      * Same resource({@link ResourceWrapper#equals(Object)}) will share the same
      * {@link ProcessorSlotChain}, no matter in which {@link Context}.
      */
-    private static volatile Map<ResourceWrapper, ProcessorSlotChain> chainMap
-        = new HashMap<ResourceWrapper, ProcessorSlotChain>();
+private static volatile Map<ResourceWrapper, ProcessorSlotChain> chainMap
+  = new HashMap<ResourceWrapper, ProcessorSlotChain>();
 ```
 
 这也意味着系统所有资源的访问都会经过chainMap,这也意味着chainMap是一个竞态热点访问数据。这就要求**访问chainMap是高性能的同时，chainMap的更新也是线程安全的**。看下源码
 
 ```java
 ProcessorSlot<Object> lookProcessChain(ResourceWrapper resourceWrapper) { //根据资源获取对应的SlotChain
-        ProcessorSlotChain chain = chainMap.get(resourceWrapper);
-        if (chain == null) {
-            synchronized (LOCK) {
-                chain = chainMap.get(resourceWrapper);
-                if (chain == null) {
-                    // Entry size limit.
-                    if (chainMap.size() >= Constants.MAX_SLOT_CHAIN_SIZE) {
-                        return null;
-                    }
-
-                    chain = SlotChainProvider.newSlotChain();
-                    Map<ResourceWrapper, ProcessorSlotChain> newMap = new HashMap<ResourceWrapper, ProcessorSlotChain>(
-                        chainMap.size() + 1);
-                    newMap.putAll(chainMap);
-                    newMap.put(resourceWrapper, chain);
-                    chainMap = newMap;
-                }
-            }
+  ProcessorSlotChain chain = chainMap.get(resourceWrapper);
+  if (chain == null) {
+    synchronized (LOCK) {
+      chain = chainMap.get(resourceWrapper);
+      if (chain == null) {
+        // Entry size limit.
+        if (chainMap.size() >= Constants.MAX_SLOT_CHAIN_SIZE) {
+          return null;
         }
-        return chain;
+
+        chain = SlotChainProvider.newSlotChain();
+        Map<ResourceWrapper, ProcessorSlotChain> newMap = new HashMap<ResourceWrapper, ProcessorSlotChain>(
+          chainMap.size() + 1);
+        newMap.putAll(chainMap);
+        newMap.put(resourceWrapper, chain);
+        chainMap = newMap;
+      }
     }
+  }
+  return chain;
+}
 ```
 
 我们看到代码**没有对chainMap加任何锁**，只是在更新chainMap时是通过**额外加锁和复制替换**的形式。这里面用到的技巧包括了volatile特性、copyOnWrite、synchronized。**这样高并发下读写操作是并行的，只有写写操作之间串行。但注意的是写操作是一个纯内存操作，只有第一次访问资源时才会触发，其时间花费只与资源的数量成正比，正常应用资源个数一般在数千以内，并且对象是共享的，这个花费的时间是非常的少。另外阿里也做了资源数量的限制：***MAX_SLOT_CHAIN_SIZE* = 6000。**所以写写操作也是非常的快，比例也很少**。**再加上volatile关键字的特性，chainMap更新后对所有线程都可见，线程安全。**
@@ -199,13 +199,13 @@ ProcessorSlot<Object> lookProcessChain(ResourceWrapper resourceWrapper) { //根�
 文档中提到的LeapArray数据结构，到底是什么呢？正如文档所说内部是一个数组
 
 ```java
- public LeapArray(int windowLengthInMs, int intervalInSec) {
-        this.windowLengthInMs = windowLengthInMs;
-        this.intervalInMs = intervalInSec * 1000;
-        this.sampleCount = intervalInMs / windowLengthInMs;
+public LeapArray(int windowLengthInMs, int intervalInSec) {
+  this.windowLengthInMs = windowLengthInMs;
+  this.intervalInMs = intervalInSec * 1000;
+  this.sampleCount = intervalInMs / windowLengthInMs;
 
-        this.array = new AtomicReferenceArray<WindowWrap<T>>(sampleCount);
-    }
+  this.array = new AtomicReferenceArray<WindowWrap<T>>(sampleCount);
+}
 ```
 
 数组里面的真正元素是一种叫MetricBucket的数据结构，里面记录了在窗口时间内通过的请求数、block、异常数、RT(响应时间)这些指标，当前线程数则是在另一个地方计算。
@@ -232,30 +232,30 @@ public class MetricBucket {
 **不过令人感到意外的是Sentinel在线程数统计时却没有用LongAdder而用的是AtomicInteger**
 
 ```java
-    private AtomicInteger curThreadNum = new AtomicInteger(0);
+private AtomicInteger curThreadNum = new AtomicInteger(0);
 ```
 
 **Sentinel每次计数时都是以当前时间的毫秒值除以窗口统计时间，再求余，得出数组中元素的位置，即对应的窗口。**
 
 ```java
-        long timeId = time / windowLengthInMs;
-        // Calculate current index.
-        int idx = (int)(timeId % array.length());
+long timeId = time / windowLengthInMs;
+// Calculate current index.
+int idx = (int)(timeId % array.length());
 ```
 
 然后用WindowWrap类封装好MetricBucket，并记录好窗口统计的开始时间，放到统计数组中。
 
 ```java
-    /**
+/**
      * @param windowLengthInMs a single window bucket's time length in milliseconds.
      * @param windowStart  the start timestamp of the window
      * @param value        window data
      */
-    public WindowWrap(long windowLengthInMs, long windowStart, T value) {
-        this.windowLengthInMs = windowLengthInMs;
-        this.windowStart = windowStart;
-        this.value = value;
-    }
+public WindowWrap(long windowLengthInMs, long windowStart, T value) {
+  this.windowLengthInMs = windowLengthInMs;
+  this.windowStart = windowStart;
+  this.value = value;
+}
 ```
 
 
@@ -263,10 +263,10 @@ public class MetricBucket {
 **StatisticSlot除了统计每个资源的实时统计之外，还负责更新系统的实时统计。**
 
 ```java
-          if (resourceWrapper.getType() == EntryType.IN) {
-                Constants.ENTRY_NODE.increaseThreadNum();
-                Constants.ENTRY_NODE.addPassRequest();
-            }
+if (resourceWrapper.getType() == EntryType.IN) {
+  Constants.ENTRY_NODE.increaseThreadNum();
+  Constants.ENTRY_NODE.addPassRequest();
+}
 ```
 
 **系统的实时统计数据将会被SystemSlot作为调整的参考。**
@@ -288,8 +288,8 @@ idx origin  threadNum passedQps blockedQps totalQps aRt   1m-passed 1m-blocked 1
 **所以**，**资源的所有实时统计信息通过ClusterBuilderSlot就可以实时获取。另外所有的资源统计信息都保存在一个全局静态的map中**
 
 ```java
-   private static volatile Map<ResourceWrapper, ClusterNode> clusterNodeMap
-        = new HashMap<ResourceWrapper, ClusterNode>();
+private static volatile Map<ResourceWrapper, ClusterNode> clusterNodeMap
+  = new HashMap<ResourceWrapper, ClusterNode>();
 ```
 
 Sentinel 控制台上面显示的实时监控数据就是拿的clusterNodeMap的数据。
@@ -322,42 +322,41 @@ Sentinel 控制台上面显示的实时监控数据就是拿的clusterNodeMap的
 
 ```java
 public static void checkSystem(ResourceWrapper resourceWrapper) throws BlockException {
-        // Ensure the checking switch is on.
-        if (!checkSystemStatus.get()) {
-            return;
-        }
+  // Ensure the checking switch is on.
+  if (!checkSystemStatus.get()) {
+    return;
+  }
 
-        // for inbound traffic only
-        if (resourceWrapper.getType() != EntryType.IN) {
-            return;
-        }
+  // for inbound traffic only
+  if (resourceWrapper.getType() != EntryType.IN) {
+    return;
+  }
 
-        // total qps
-        double currentQps = Constants.ENTRY_NODE == null ? 0.0 : Constants.ENTRY_NODE.successQps();
-        if (currentQps > qps) {
-            throw new SystemBlockException(resourceWrapper.getName(), "qps");
-        }
+  // total qps
+  double currentQps = Constants.ENTRY_NODE == null ? 0.0 : Constants.ENTRY_NODE.successQps();
+  if (currentQps > qps) {
+    throw new SystemBlockException(resourceWrapper.getName(), "qps");
+  }
 
-        // total thread
-        int currentThread = Constants.ENTRY_NODE == null ? 0 : Constants.ENTRY_NODE.curThreadNum();
-        if (currentThread > maxThread) {
-            throw new SystemBlockException(resourceWrapper.getName(), "thread");
-        }
+  // total thread
+  int currentThread = Constants.ENTRY_NODE == null ? 0 : Constants.ENTRY_NODE.curThreadNum();
+  if (currentThread > maxThread) {
+    throw new SystemBlockException(resourceWrapper.getName(), "thread");
+  }
 
-        double rt = Constants.ENTRY_NODE == null ? 0 : Constants.ENTRY_NODE.avgRt();
-        if (rt > maxRt) {
-            throw new SystemBlockException(resourceWrapper.getName(), "rt");
-        }
+  double rt = Constants.ENTRY_NODE == null ? 0 : Constants.ENTRY_NODE.avgRt();
+  if (rt > maxRt) {
+    throw new SystemBlockException(resourceWrapper.getName(), "rt");
+  }
 
-        // BBR algorithm.
-        if (highestSystemLoadIsSet && getCurrentSystemAvgLoad() > highestSystemLoad) {
-            if (currentThread > 1 &&
-                currentThread > Constants.ENTRY_NODE.maxSuccessQps() * Constants.ENTRY_NODE.minRt() / 1000) {
-                throw new SystemBlockException(resourceWrapper.getName(), "load");
-            }
-        }
-
+  // BBR algorithm.
+  if (highestSystemLoadIsSet && getCurrentSystemAvgLoad() > highestSystemLoad) {
+    if (currentThread > 1 &&
+        currentThread > Constants.ENTRY_NODE.maxSuccessQps() * Constants.ENTRY_NODE.minRt() / 1000) {
+      throw new SystemBlockException(resourceWrapper.getName(), "load");
     }
+  }
+}
 ```
 
 调整策略参考
@@ -407,9 +406,175 @@ private static void initFlowRules(){
 
 **传参里面的 DefaultNode node就是ClusterBuilderSlot里面的统计数据。**
 
+## DegradeSlot
 
+```java
+@SpiOrder(-1000)
+public class DegradeSlot extends AbstractLinkedProcessorSlot<DefaultNode> {
 
-## slot间调用关系
+    @Override
+    public void entry(Context context, ResourceWrapper resourceWrapper, DefaultNode node, int count, boolean prioritized, Object... args)
+        throws Throwable {
+        //熔断降级判断
+        DegradeRuleManager.checkDegrade(resourceWrapper, context, node, count);
+        fireEntry(context, resourceWrapper, node, count, prioritized, args);
+    }
+
+    @Override
+    public void exit(Context context, ResourceWrapper resourceWrapper, int count, Object... args) {
+        fireExit(context, resourceWrapper, count, args);
+    }
+}
+```
+
+源码很简单，委托DegradeRuleManager来处理，进入DegradeRuleManager的checkDegrade方法
+
+```java
+public static void checkDegrade(ResourceWrapper resource, Context context, DefaultNode node, int count)
+        throws BlockException {
+		//获取资源熔断规则
+        Set<DegradeRule> rules = degradeRules.get(resource.getName());
+        if (rules == null) {
+            return;
+        }
+		//遍历每个熔断规则，校验是否满足熔断条件
+        for (DegradeRule rule : rules) {
+        	//如果达到了熔断条件，就会抛出DegradeException的异常
+            if (!rule.passCheck(context, node, count)) {
+                throw new DegradeException(rule.getLimitApp(), rule);
+            }
+        }
+    }
+```
+
+熔断的判断就是针对资源设置的规则，逐一判断处理。如果有一个条件不满足的话，就会抛出DegradeException异常。那么熔断判断具体是怎么做的呢？继续深入DegradeRule类中的passCheck方法，在分析passCheck方法之前，先介绍DegradeRule类几个比较重要的字段。
+
+```java
+//慢请求或异常请求的计数
+private double count;
+
+//熔断窗口
+private int timeWindow;
+
+//熔断策略 (0: 慢调用, 1: 异常率, 2: 异常数) 
+private int grade = RuleConstant.DEGRADE_GRADE_RT;
+
+/**
+* 针对慢调用，如果慢调用数小于其值（默认为5），是不会触发熔断的
+*
+* @since 1.7.0
+*/
+private int rtSlowRequestAmount = RuleConstant.DEGRADE_DEFAULT_SLOW_REQUEST_AMOUNT;
+
+/**
+* 针对异常率，如果异常数小于其值（默认为5），是不会触发熔断的
+*
+* @since 1.7.0
+*/
+private int minRequestAmount = RuleConstant.DEGRADE_DEFAULT_MIN_REQUEST_AMOUNT;
+```
+
+熔断的实现原理简单说来就是在一个设定的窗口时间内，根据设置的具体熔断策略，判断相应的计数统计是否超过了门限值，如果超过了则会触发熔断机制。深入passCheck的源码
+
+```java
+//慢调用计数
+private AtomicLong passCount = new AtomicLong(0);
+//熔断降级标记位，如果为true，则表示触发了熔断
+private final AtomicBoolean cut = new AtomicBoolean(false);
+ 
+public boolean passCheck(Context context, DefaultNode node, int acquireCount, Object... args) {
+  //如果标记位为真，表示已触发熔断
+  if (cut.get()) {
+    return false;
+  }
+  //获取资源计数统计node
+  ClusterNode clusterNode = ClusterBuilderSlot.getClusterNode(this.getResource());
+  if (clusterNode == null) {
+    return true;
+  }
+  //如果熔断降级策略为慢调用
+  if (grade == RuleConstant.DEGRADE_GRADE_RT) {
+    //获取慢调用平均响应时间
+    double rt = clusterNode.avgRt();
+    //如果调用平均响应时间小于设定的门限值，则重置慢调用计数统计
+    if (rt < this.count) {
+      passCount.set(0);
+      return true;
+    }
+
+    //如果慢调用数小于默认的最小门限数（5），则不进行熔断降级
+    if (passCount.incrementAndGet() < rtSlowRequestAmount) {
+      return true;
+    }
+    //如果熔断降级策略是异常率
+  } else if (grade == RuleConstant.DEGRADE_GRADE_EXCEPTION_RATIO) {
+    //每秒的异常数
+    double exception = clusterNode.exceptionQps();
+    //每秒成功调用数
+    double success = clusterNode.successQps();
+    //每秒总调用数
+    double total = clusterNode.totalQps();
+    //如果总调用数小于默认的门限值（5）,则不会触发熔断降级	
+    if (total < minRequestAmount) {
+      return true;
+    }
+    //此句需要好好理解下，它表达的意思是：在异常数小于最小门限的条件是不进行熔断降级的，但前提是所用调用都不能全是异常调用
+    double realSuccess = success - exception;
+    if (realSuccess <= 0 && exception < minRequestAmount) {
+      return true;
+    }
+    //异常率小于设置的门限，则不熔断降级
+    if (exception / success < count) {
+      return true;
+    }
+
+    //如果熔断降级策略是异常数
+  } else if (grade == RuleConstant.DEGRADE_GRADE_EXCEPTION_COUNT) {
+    //注意，这个异常数是每分钟统计的
+    double exception = clusterNode.totalException();
+    //小于设置的门限值，则不熔断
+    if (exception < count) {
+      return true;
+    }
+  }
+  //如果走到了这里，则表示将要触发熔断降级了
+  //重置慢调用统计时间窗口，此处用了CAS的方法来设置标志位，防止并发。
+  //时间窗口的重置是依赖于定时任务来完成的，当timeWindow时间后，会重置熔断标志位和计数统计
+  if (cut.compareAndSet(false, true)) {
+    ResetTask resetTask = new ResetTask(this);
+    pool.schedule(resetTask, timeWindow, TimeUnit.SECONDS);
+  }
+  return false;
+}
+
+//重置时间窗口
+private static final class ResetTask implements Runnable {
+
+  private DegradeRule rule;
+
+  ResetTask(DegradeRule rule) {
+    this.rule = rule;
+  }
+
+  @Override
+  public void run() {
+    //重置慢调用计数
+    rule.passCount.set(0);
+    //熔断标志位
+    rule.cut.set(false);
+  }
+}
+```
+
+上面的代码描述了熔断降级核心流程，针对上面代码需要注意的是：
+
+- 慢调用是通过一个**时间窗口**来计数慢调用的次数来实现的
+- 异常率是针对**每秒**的异常数和成功数的比值来判断是否满足触发条件的
+- 异常数是针对**每分钟**的异常数统计来实现的
+
+当熔断被触发后，标志位会被设置为true,并会持续timeWindow长的时间，这个时间就是开发者在设置熔断降级规则时设置的。上述就是整个熔断降级的实现过程，从代码来看，熔断窗口通过一个定时任务来更新，设计的还是比较新颖的。
+
+## slot间调用关系（重点）（方便理解源码）
 
 ![img](image/v2-8e72fec5ef17ad845bb5c806657c436c_1440w.jpg)
 
@@ -418,14 +583,14 @@ private static void initFlowRules(){
 在Sentinel 中所有资源的访问都会生成一个Context(请求上下文)
 
 ```java
-	         Context context = ContextUtil.getContext();
+Context context = ContextUtil.getContext();
 ```
 
 这个Context是基于ThreadLocal的，所以一个请求是横跨多个资源的同时，都是在同一个Context下面。这样可以实现跨资源的链路访问统计。
 
 Context在entry创建的时候生成和获取，在exit的时候清除掉。所以如果entry不为空，最后一定要调用exit方法，否则会有内存泄露的风险。
 
-```text
+```java
 entry = SphU.entry("HelloWorld"); 
 entry.exit();
 ```
