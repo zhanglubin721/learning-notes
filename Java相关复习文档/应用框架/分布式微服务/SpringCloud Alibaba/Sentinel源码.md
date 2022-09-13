@@ -431,20 +431,20 @@ public class DegradeSlot extends AbstractLinkedProcessorSlot<DefaultNode> {
 
 ```java
 public static void checkDegrade(ResourceWrapper resource, Context context, DefaultNode node, int count)
-        throws BlockException {
-		//获取资源熔断规则
-        Set<DegradeRule> rules = degradeRules.get(resource.getName());
-        if (rules == null) {
-            return;
-        }
-		//遍历每个熔断规则，校验是否满足熔断条件
-        for (DegradeRule rule : rules) {
-        	//如果达到了熔断条件，就会抛出DegradeException的异常
-            if (!rule.passCheck(context, node, count)) {
-                throw new DegradeException(rule.getLimitApp(), rule);
-            }
-        }
+  throws BlockException {
+  //获取资源熔断规则
+  Set<DegradeRule> rules = degradeRules.get(resource.getName());
+  if (rules == null) {
+    return;
+  }
+  //遍历每个熔断规则，校验是否满足熔断条件
+  for (DegradeRule rule : rules) {
+    //如果达到了熔断条件，就会抛出DegradeException的异常
+    if (!rule.passCheck(context, node, count)) {
+      throw new DegradeException(rule.getLimitApp(), rule);
     }
+  }
+}
 ```
 
 熔断的判断就是针对资源设置的规则，逐一判断处理。如果有一个条件不满足的话，就会抛出DegradeException异常。那么熔断判断具体是怎么做的呢？继续深入DegradeRule类中的passCheck方法，在分析passCheck方法之前，先介绍DegradeRule类几个比较重要的字段。
