@@ -1,0 +1,3 @@
+# MongoDB与MySQL的区别
+
+![image-20220923150158152](image/image-20220923150158152.png)
