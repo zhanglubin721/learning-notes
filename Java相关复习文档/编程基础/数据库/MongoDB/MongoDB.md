@@ -368,6 +368,8 @@ db.user.find().sort({id:-1})
 条件连接查询：db.comment.find({$and:[{条件1},{条件2}]}) 或 db.comment.find({$or:[{条件1},{条件2}]})
 ```
 
+![image-20220923154659301](image/image-20220923154659301.png)
+
 ### 5 索引的介绍与使用
 
 ![image-20220923154341423](image/image-20220923154341423.png)
@@ -529,8 +531,6 @@ public class Comment {
     private String parentId;
 }
 ```
-
-![image-20220923154659301](image/image-20220923154659301.png)
 
 ### 6.5 文章评论的基本API
 
