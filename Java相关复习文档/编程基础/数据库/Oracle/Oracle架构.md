@@ -214,32 +214,19 @@ SQL> conn /as sysdba
 Connected.
 SQL> show user;
 USER is "SYS"
-
 SQL> select * from v$sga;
-
 NAME              VALUE
-
 -------------------- ----------
 Fixed Size      2022144
-
 Variable Size         503317760
-
 Database Buffers     1627389952
-
 Redo Buffers           14753792
-
-
+ 
 SQL> show sga
-
 Total System Global Area 2147483648 bytes     #对应kernel.shmmax = 2147483648
-
-
 Fixed Size          2022144 bytes
-
 Variable Size         503317760 bytes
-
 Database Buffers     1627389952 bytes
-
 Redo Buffers           14753792 bytes
 ```
 
@@ -273,68 +260,41 @@ SGA（System Global Area）是与Oracle性能关系最大的核心部分，也�
 
 ```sql
 #Step1. 查看SGA的大小：因为DB_CACHE_SIZE的size受SGA的影响
-
 SQL> show parameter sga_max_size;
-
 NAME                     TYPE    VALUE
-
 ------------------------------------ ----------- ------------------------------
-
 sga_max_size                 big integer 2G
-
-
+ 
 #Step2. 查看show parameter shared_pool_size的大小
-
 SQL> show parameter shared_pool_size;                   NAME                     TYPE    VALUE
-
------------------------------------ ----------- ------------------------------
-
+------------------------------------ ----------- ------------------------------
 shared_pool_size             big integer 0
-
+ 
 #Step3. 计算DB_CACHE_SIZE的大小：shared_pool_size + db_cache_size = SGA_MAX_SIZE * 70%
-
+ 
 #Step4. 修改DB_CACHE_SIZE的大小
-
 SQL> alter system set db_cache_size=1433M scope=spfile sid='demo';
-
+ 
 System altered.
-
+ 
 SQL> conn sys /as sysdba
-
 Enter password: ********
-
 Connected.
-
-
 SQL> shutdown immediate
-
 Database closed.
-
 Database dismounted.
-
 ORACLE instance shut down.
-
-
 SQL> startup
-
 ORACLE instance started.
-
-
-
+ 
 Total System Global Area 2147483648 bytes
-
 Fixed Size          2022144 bytes
-
 Variable Size         503317760 bytes
-
 Database Buffers     1627389952 bytes
-
 Redo Buffers           14753792 bytes
-
 Database mounted.
-
 Database opened.
-
+ 
 SQL> show parameter db_cache_size
 ```
 
@@ -362,10 +322,10 @@ SQL> show parameter db_cache_size
 
 
 手动的调整共享池的大小：
- 
 
 ```sql
 select COMPONENT,CURRENT_SIZE,MIN_SIZE,MAX_SIZE from v$sga_dynamic_components;   //显示可以动态重设大小的SGA组件的当前最大和最小容量
+ 
 ALTER SYSTEM SET SHARED_POOL_SIZE = 110M;
 ```
 
@@ -481,39 +441,23 @@ PGA包含了Server Process数据和控制信息的内存区域。，由下列3�
 
 ```sql
 SQL> select name,description from v$bgprocess where paddr<>'00';
-
+ 
 NAME  DESCRIPTION
-
------ --------------------------------------------------------------
-
-PMON  process cleanup
-
-PSP0  process spawner 0
-
-MMAN  Memory Manager
-
-DBW0  db writer process 0
-
-LGWR  Redo etc.
-
-CKPT  checkpoint
-
-SMON  System Monitor Process
-
-RECO  distributed recovery
-
-CJQ0  Job Queue Coordinator
-
-QMNC  AQ Coordinator
-
-MMON  Manageability Monitor Process
-
-
-
-NAME  DESCRIPTION
-
 ----- ----------------------------------------------------------------
-
+PMON  process cleanup
+PSP0  process spawner 0
+MMAN  Memory Manager
+DBW0  db writer process 0
+LGWR  Redo etc.
+CKPT  checkpoint
+SMON  System Monitor Process
+RECO  distributed recovery
+CJQ0  Job Queue Coordinator
+QMNC  AQ Coordinator
+MMON  Manageability Monitor Process
+ 
+NAME  DESCRIPTION
+----- ----------------------------------------------------------------
 MMNL  Manageability Monitor Process 2
 ```
 
@@ -652,15 +596,10 @@ Database物理结构：是Database在操作系统中的文件集合，即：磁�
 
 ```bash
 SQL> select member from v$logfile;    # v$logfile数据字典，记录了redolog文件的列表
-
  MEMBER
-
 --------------------------------------------------------------------------------
-
  /u01/oradata/demo/redo03.log
-
  /u01/oradata/demo/redo02.log
-
  /u01/oradata/demo/redo01.log
 ```
 
