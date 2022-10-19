@@ -2709,3 +2709,9 @@ public AopProxy createAopProxy(AdvisedSupport config) throws AopConfigException 
 如果目标类是接口就一定会使用jdk代理，如果目标类没有可以代理的接口就一定会使用Cglib代理。
 
 # 动态代理原理详见 动态代理.md
+
+# Spring IOC中Bean注册是单线程的吗？
+
+Spring IOC 在Bean的注册流程中，会判断当前容器是否已经有对象创建，如果已经创建，会加锁，否则不加锁走后面流程。![img](image/v2-883b35879a9282f188052ddc3d8b7b88_b.png)
+
+这里，一直疑惑，为什么在判断完hasBeanCreationStarted()后，后面就一定线程安全了？不会在hasBeanCreationStarted()为false的情况下，走else时，存在另外一个线程注册创建了Bean到容器中吗？百度了很多，也没有看清楚这个问题，后来个人的思考是：Spring启动注册流程是单线程的，在判断完hasBeanCreationStarted()后不会有别的线程注册创建Bean的情况，所以走else不需要加锁，但是在注册创建完对象后，使用这个对象的线程可能是另外的一个或多个的其他线程，所以要保证线程安全。
