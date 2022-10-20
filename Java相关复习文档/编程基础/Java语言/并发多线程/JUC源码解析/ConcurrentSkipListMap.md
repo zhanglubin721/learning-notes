@@ -320,6 +320,14 @@ private V doPut(K key, V value, boolean onlyIfAbstsent){
 }
 ```
 
+1. 找到key的前继节点b，n指向b的后继节点
+2. 重新获取b的后继节点，如果不是n，则证明其他线程修改了，需要重新找前继节点和后继节点
+3. 如果b的后继节点就是n，那么获取n节点的value，如果value是null，说明这个节点已经被删除了，再次重新找前继节点和后继节点。
+4. 如果b被删除了，则重新找前继节点和后继节点。
+5. 如果都没有上面的问题，则新建节点，将新节点插入跳表中，过程中用到了casNext函数，函数的解释是：compareAndSet next field，内部使用了sun.misc.Unsafe的compareAndSwapObject方法，是进行原子操作的，具体的解释请看这里
+6. 插入节点（insertIndex）的过程，首先要用随机算法产生一个最高level，如果这个最高level小于等于现在已有的最高level，那么就对从1到最高level都增加addIndex，否则，要先创建level，然后再执行addIndex。
+7. addIndex是指插入节点，首先会从头节点开始，一层一层往下遍历，如果当前层等于要插入节点的最高层，则需要执行link操作，link也是原子操作，将该节点插入本层合适的位置。在这个过程中，我们都解决的是每一层的right指针指到哪个节点的问题，那么down指针呢？是不是太迷茫了，down指针其实在创建之初就指向了下一个节点。
+
 ## findPredecessor() 寻找前继节点
 
 总体思路是: 从矩形链表的左上角的 HeadIndex 索引开始, 先向右, 遇到 null, 或 > key 时向下, 重复向右向下找, 一直找到 对应的前继节点(前继节点就是小于 key 的最大节点)
@@ -539,3 +547,15 @@ final V doRemove(Object key, Object value){
 如果要实现一个key-value结构，需求的功能有插入、查找、迭代、修改，那么首先Hash表就不是很适合了，因为迭代的时间复杂度比较高；而红黑树的插入很可能会涉及多个结点的旋转、变色操作，因此需要在外层加锁，这无形中降低了它可能的并发度。而SkipList底层是用链表实现的，可以实现为lock free，同时它还有着不错的性能（单线程下只比红黑树略慢），非常适合用来实现我们需求的那种key-value结构。
 
 所以，LevelDB、Redis的底层存储结构就是用的SkipList。
+
+## ConcurrentSkipListMap与ConcurrentHashMap对比
+
+在4线程1.6万数据的条件下，[ConcurrentHashMap](https://so.csdn.net/so/search?q=ConcurrentHashMap&spm=1001.2101.3001.7020) 存取速度是ConcurrentSkipListMap 的4倍左右。
+
+但ConcurrentSkipListMap有几个ConcurrentHashMap 不能比拟的优点：
+
+1、ConcurrentSkipListMap 的key是有序的。
+
+2、ConcurrentSkipListMap 支持更高的并发。
+
+ConcurrentSkipListMap 的存取时间是log（N），和线程数几乎无关。也就是说在数据量一定的情况下，并发的线程越多，ConcurrentSkipListMap越能体现出他的优势

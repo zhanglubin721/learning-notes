@@ -76,7 +76,12 @@ private final Node<K,V>[] initTable() {
 ```
 
 > Lazy table initialization minimizes footprint until first use, and also avoids resizings when the first operation is from a putAll, constructor with map argument, or deserialization. These cases attempt to override the initial capacity settings, but harmlessly fail to take effect in cases of races.
-> 大白话：只有第一次使用才初始化，为了防止初始化后的首次操作就需要扩容（比如putAll），从而影响效率。
+
+### 懒加载机制
+
+大白话：只有第一次使用才初始化，为了防止初始化后的首次操作就需要扩容（比如putAll），从而影响效率。
+
+HashMap也使用了懒加载机制**，**只有你第一次向HashMap中添加元素时，才进行第一次的容量设置
 
 ### put操作
 
@@ -126,8 +131,7 @@ final V putVal(K key, V value, boolean onlyIfAbsent) {
                                 break;
                             }
                         }
-                    }
-                    else if (f instanceof TreeBin) { // 红黑树根节点
+                    } else if (f instanceof TreeBin) { // 红黑树根节点
                         Node<K,V> p;
                         binCount = 2;
                         if ((p = ((TreeBin<K,V>)f).putTreeVal(hash, key,
