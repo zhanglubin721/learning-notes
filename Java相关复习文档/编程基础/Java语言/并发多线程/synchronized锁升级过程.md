@@ -498,6 +498,182 @@ jvm此时会将 obj对象的类class对象中的偏向标记**（注意是类中
 
 ![img](image/v2-ce051363b5973285287cad912c41b44a_1440w.png)
 
+#### 批量重偏向（详解）
+
+如果对象虽然被多个线程访问，但没有竞争，这时偏向了线程 T1 的对象仍有机会重新偏向 T2，重偏向会重置对象的 Thread ID；当撤销偏向锁达到阈值 20 次后，jvm 会这样觉得，我是不是偏向错了呢，于是会在给这些对象加锁时重新偏向至t2。因为前19次是轻量，释放之后为无锁不可偏向，但是20次后面的是偏向t2，释放之后依然是偏向t2。
+
+```java
+package org.example;
+
+import lombok.extern.slf4j.Slf4j;
+import org.example.entity.A;
+import org.openjdk.jol.info.ClassLayout;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.locks.LockSupport;
+
+@Slf4j
+public class TestInflate {
+
+    static Thread t1;
+    static Thread t2;
+    static int loopFlag = 20;
+
+    public static void main(String[] args) {
+        final List<A> list = new ArrayList<>();
+        t1 = new Thread() {
+            @Override
+            public void run() {
+                for (int i = 0; i < loopFlag; i++) {
+                    A a = new A();
+                    list.add(a);
+                    log.debug("加锁前" + i + " " + ClassLayout.parseInstance(a).toPrintable());
+                    synchronized (a) {
+                        log.debug("加锁中" + i + " " + ClassLayout.parseInstance(a).toPrintable());
+                    }
+                    log.debug("加锁结束" + i + " " + ClassLayout.parseInstance(a).toPrintable());
+                }
+                log.debug("============t1 都是偏向锁=============");
+                //防止竞争 执行完后叫醒  t2
+                LockSupport.unpark(t2);
+            }
+        };
+        t2 = new Thread() {
+            @Override
+            public void run() {
+                //防止竞争 先睡眠t2
+                LockSupport.park();
+                for (int i = 0; i < loopFlag; i++) {
+                    A a = list.get(i);
+                    //因为从list当中拿出都是偏向t1
+                    log.debug("加锁前" + i + " " + ClassLayout.parseInstance(a).toPrintable());
+                    synchronized (a) {
+                        //前20撤销偏向t1；然后升级轻量指向t2线程栈当中的锁记录
+                        //后面的发送批量偏向t2
+                        log.debug("加锁中 " + i + " " + ClassLayout.parseInstance(a).toPrintable());
+                    }
+                    //因为前20是轻量，释放之后为无锁不可偏向
+                    //但是后面的是偏向t2 释放之后依然是偏向t2
+                    log.debug("加锁结束" + i + " " + ClassLayout.parseInstance(a).toPrintable());
+                }
+                log.debug("新产生的对象" + ClassLayout.parseInstance(new  A()).toPrintable());
+            }
+        };
+        t1.start();
+        t2.start();
+    }
+}
+```
+
+- 关闭偏向延迟，-XX:BiasedLockingStartupDelay=0，查看第19次对象头打印
+
+![在这里插入图片描述](image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzQwOTc3MTE4,size_16,color_FFFFFF,t_70.png)
+
+- 查看第20次对象头打印
+
+![在这里插入图片描述](image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzQwOTc3MTE4,size_16,color_FFFFFF,t_70-20221021111721627.png)
+
+#### 批量撤销（详解）
+
+- 当一个偏向锁如果撤销次数到达40的时候就认为这个对象设计的有问题；那么JVM会把这个对象所对应的类所有的对象都撤销偏向锁；并且新实例化的对象也是不可偏向的
+- t1线程创建40个a对象，t2撤销偏向锁40次，t3开始加锁
+
+```java
+package org.example;
+
+import lombok.extern.slf4j.Slf4j;
+import org.example.entity.A;
+import org.openjdk.jol.info.ClassLayout;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.locks.LockSupport;
+
+@Slf4j
+public class TestInflate {
+
+    static Thread t1;
+    static Thread t2;
+    static Thread t3;
+    static int loopFlag = 40;
+
+    public static void main(String[] args) {
+        final List<A> list = new ArrayList<>();
+        t1 = new Thread() {
+            @Override
+            public void run() {
+                for (int i = 0; i < loopFlag; i++) {
+                    A a = new A();
+                    list.add(a);
+                    log.debug("加锁前" + i + " " + ClassLayout.parseInstance(a).toPrintable());
+                    synchronized (a) {
+                        log.debug("加锁中" + i + " " + ClassLayout.parseInstance(a).toPrintable());
+                    }
+                    log.debug("加锁结束" + i + " " + ClassLayout.parseInstance(a).toPrintable());
+                }
+                log.debug("============t1 都是偏向锁=============");
+                //防止竞争 执行完后叫醒  t2
+                LockSupport.unpark(t2);
+            }
+        };
+        t2 = new Thread() {
+            @Override
+            public void run() {
+                //防止竞争 先睡眠t2
+                LockSupport.park();
+                for (int i = 0; i < loopFlag; i++) {
+                    A a = list.get(i);
+                    //因为从list当中拿出都是偏向t1
+                    log.debug("加锁前" + i + " " + ClassLayout.parseInstance(a).toPrintable());
+                    synchronized (a) {
+                        //前20撤销偏向t1；然后升级轻量指向t2线程栈当中的锁记录
+                        //后面的发送批量偏向t2
+                        log.debug("加锁中 " + i + " " + ClassLayout.parseInstance(a).toPrintable());
+                    }
+                    //因为前20是轻量，释放之后为无锁不可偏向
+                    //但是后面的是偏向t2 释放之后依然是偏向t2
+                    log.debug("加锁结束" + i + " " + ClassLayout.parseInstance(a).toPrintable());
+                }
+                log.debug("新产生的对象" + ClassLayout.parseInstance(new  A()).toPrintable());
+                LockSupport.unpark(t3);
+            }
+        };
+        t3 = new Thread() {
+            @Override
+            public void run() {
+                //防止竞争 先睡眠t2
+                LockSupport.park();
+                for (int i = 0; i < loopFlag; i++) {
+                    A a = list.get(i);
+                    log.debug("加锁前" + i + " " + ClassLayout.parseInstance(a).toPrintable());
+                    synchronized (a) {
+                        log.debug("加锁中 " + i + " " + ClassLayout.parseInstance(a).toPrintable());
+                    }
+                    log.debug("加锁结束" + i + " " + ClassLayout.parseInstance(a).toPrintable());
+                }
+                log.debug("新产生的对象" + ClassLayout.parseInstance(new  A()).toPrintable());
+            }
+        };
+        t1.start();
+        t2.start();
+        t3.start();
+    }
+}
+```
+
+- 查看t3线程打印
+
+![在这里插入图片描述](image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzQwOTc3MTE4,size_16,color_FFFFFF,t_70-20221021111808989.png)
+
+- 新创建的a对象也是无锁不可偏向的
+
+![在这里插入图片描述](image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzQwOTc3MTE4,size_16,color_FFFFFF,t_70-20221021111818998.png)
+
+总结一句话：t2 0~18 轻量级，19~39 偏向 t2. t3 全部轻量级，38 开始批量重撤销
+
+因为这种情况的出现再加上CPU等硬件的提升使得CAS的代价降低所以JDK15就将偏向锁默认为关闭状态。
+
 ### 偏向锁在进程一开始就启用了吗
 
 即使你开启了偏向锁，但是这个偏向锁的启用是有延迟，大概 4s左右。
@@ -643,6 +819,87 @@ lockRecord格式以及存储/交换过程如下：
 简要版流程如下：
 
 ![img](image/v2-318f73a44d1c3ba4df66c18805f6e654_1440w.png)
+
+### Monitor实现原理
+
+Monitor是在JVM层对Java并发控制synchronized的重量级锁的实现。通过ObjectMonitor来实现并发的锁控制。同时也是Java基础对象Object的wait,nofity方法的底层支持实现。
+
+在HotSpot虚拟机中，Monitor是基于C++的ObjectMonitor类实现的，其主要成员包括：
+
+- _owner：指向持有ObjectMonitor对象的线程
+- _WaitSet：存放处于wait状态的线程队列，即调用wait()方法的线程
+- _EntryList：存放处于等待锁block状态的线程队列
+- _count：约为_WaitSet 和 _EntryList 的节点数之和
+- _cxq: 多个线程争抢锁，会先存入这个单向链表
+- _recursions: 记录重入次数
+
+![在这里插入图片描述](image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2x1Y2t5X2xvdmU4MTY=,size_16,color_FFFFFF,t_70.png)
+
+上图简略展示了ObjectMonitor的基本工作机制：
+
+（1）当多个线程同时访问一段同步代码时，首先会进入 _EntryList 队列中。
+
+（2）当某个线程获取到对象的Monitor后进入临界区域，并把Monitor中的 _owner 变量设置为当前线程，同时Monitor中的计数器 _count 加1。即获得对象锁。
+
+（3）若持有Monitor的线程调用 wait() 方法，将释放当前持有的Monitor，_owner变量恢复为null，_count自减1，同时该线程进入 _WaitSet 集合中等待被唤醒。
+
+（4）在_WaitSet 集合中的线程会被再次放到_EntryList 队列中，重新竞争获取锁。
+
+（5）若当前线程执行完毕也将释放Monitor并复位变量的值，以便其他线程进入获取锁。
+
+线程争抢锁的过程要比上面展示得更加复杂。除了_EntryList 这个双向链表用来保存竞争的线程，ObjectMonitor中还有另外一个单向链表 _cxq，由两个队列来共同管理并发的线程。
+
+![在这里插入图片描述](image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2x1Y2t5X2xvdmU4MTY=,size_16,color_FFFFFF,t_70-20221021134552916.png)
+ObjectMonitor::enter() 和 ObjectMonitor::exit() 分别是ObjectMonitor获取锁和释放锁的方法。线程解锁后还会唤醒之前等待的线程，根据策略选择直接唤醒_cxq队列中的头部线程去竞争，或者将_cxq队列中的线程加入_EntryList，然后再唤醒_EntryList队列中的线程去竞争。
+
+ObjectMonitor::enter()
+![在这里插入图片描述](image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2x1Y2t5X2xvdmU4MTY=,size_16,color_FFFFFF,t_70-20221021134555435.png)
+下面我们看一下ObjectMonitor::enter()方法竞争锁的流程：
+
+首先尝试通过 CAS 把 ObjectMonitor 中的 _owner 设置为当前线程，设置成功就表示获取锁成功。通过 _recursions 的自增来表示重入。
+
+如果没有CAS成功，那么就开始启动自适应自旋，自旋还不行的话，就包装成 ObjectWaiter 对象加入到 _cxq 单向链表之中。关于自旋锁和自适应自旋，可以参考前文《Java面试必考问题：什么是自旋锁 》](https://www.toutiao.com/i6934327407897854475/?group_id=6934327407897854475)。
+
+加入_cxq链表后，再次尝试是否可以CAS拿到锁，再次失败就要阻塞(block)，底层调用了pthread_mutex_lock。
+
+ObjectMonitor::exit()方法
+
+线程执行 Object.wait()方法时，会将当前线程加入到 _waitSet 这个双向链表中，然后再运行ObjectMonitor::exit() 方法来释放锁。
+
+可重入锁就是根据 _recursions 来判断的，重入一次就执行 _recursions++，解锁一次就执行 _recursions–，如果 _recursions 减到 0 ，就说明需要释放锁了。
+
+线程解锁后还会唤醒之前等待的线程。当线程执行 Object.notify()方法时，从 _waitSet 头部拿线程节点，然后根据策略（QMode指定）决定将线程节点放在哪里，包括_cxq 或 _EntryList 的头部或者尾部，然后唤醒队列中的线程。
+
+![在这里插入图片描述](image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2x1Y2t5X2xvdmU4MTY=,size_16,color_FFFFFF,t_70-20221021134558691.png)
+
+### Policy与QMode
+
+#### QMode
+
+当Owner释放锁时，根据不同的QMode策略判断是从cxq还是EntryList中获取头节点来拿锁或者移动节点到头部
+
+#### Policy
+
+当执行notify方法时取出**_WaitSet**列表中的第一个根据不同的Policy策略判断是将这个线程放入**_EntryList**还是**_cxq**队列中的起始或末尾位置
+
+JDK8默认设置下(Policy为2，QMode为0)竞争重量级锁的线程的流转过程。 
+
+![img](image/1559627-20210511154125098-1137705222.png)
+
+notify():当执行notify方法时，取出**_WaitSet**列表中的第一个，根据Policy的不同，将这个线程放入**_EntryList**或者**_cxq**队列中的起始或末尾位置。JDK8默认Policy为2.即默认：如果_EntryList为空就放入_EntryList，否则放入cxq头部。而notifyAll()则相当于的将_WaitSet列表中的所有对象取出来调用notify().
+
+- Policy == 0：放入_EntryList队列的排头位置； 
+- Policy == 1：放入_EntryList队列的末尾位置； 
+- Policy == 2：_EntryList队列为空就放入_EntryList，否则放入_cxq队列的排头位置；
+- Policy == 3：放入_cxq队列中末尾位置；
+
+锁释放：当Owner释放锁时，根据不同的策略从cxq或EntryList中获取头节点（由QMode指定），通过unpark唤醒其代表的线程，线程唤醒之后，继续通过CAS指令去竞争锁。竞争失败的继续保留在原来的列表中的原位置。JDK8默认QMode为0，即：取_EntryList的首元素，如果_EntryList为空就将cxq的首元素取出来放入_EntryList，然后再从_EntryList中取出来。
+
+- QMode = 2，并且_cxq非空：取_cxq队列排头位置的ObjectWaiter对象并立即唤醒其中的线程并返回。
+- QMode = 3，并且_cxq非空：把_cxq队列首元素放入_EntryList的尾部；
+- QMode = 4，并且_cxq非空：把_cxq队列首元素放入_EntryList的头部； 
+- QMode = 0，不做什么，继续往下执行。
+- 根据QMode不同策略操作完成(除开QMode==2立即返回)之后的后续操作为：取_EntryList的首元素，如果_EntryList为空就将cxq的首元素取出来放入_EntryList，然后再从_EntryList中取出来。
 
 ## 关于synchronized关键字的思考
 
