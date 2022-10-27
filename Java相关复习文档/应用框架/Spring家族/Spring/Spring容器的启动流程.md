@@ -13,11 +13,12 @@ Spring的启动流程可以归纳为三个步骤：
 因为是基于 java-config 技术分析源码，所以这里的入口是 AnnotationConfigApplicationContext ，如果是使用 xml 分析，那么入口即为 ClassPathXmlApplicationContext ，它们俩的共同特征便是都继承了 AbstractApplicationContext 类，而大名鼎鼎的 refresh()便是在这个类中定义的。我们接着分析 AnnotationConfigApplicationContext 类，源码如下：
 
 ```java
+//BeanDefinition：bean定义
 // 初始化容器
 public AnnotationConfigApplicationContext(Class<?>... annotatedClasses) {
-    // 注册 Spring 内置后置处理器的 BeanDefinition 到容器
+    // 注册 Spring 内置的后置处理器的 BeanDefinition 到容器
     this();
-    // 注册配置类 BeanDefinition 到容器
+    // 注册各种配置类 BeanDefinition 到容器
     register(annotatedClasses);
     // 加载或者刷新容器中的Bean
     refresh();
@@ -837,4 +838,3 @@ protected void finishRefresh() {
 > - （2）getLifecycleProcessor().onRefresh()：拿到前面定义的生命周期处理器（LifecycleProcessor）回调onRefresh()方法
 > - （3）publishEvent(new ContextRefreshedEvent(this))：发布容器刷新完成事件；
 > - （4）liveBeansView.registerApplicationContext(this);
->
