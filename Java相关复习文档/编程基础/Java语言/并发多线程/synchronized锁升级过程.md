@@ -901,6 +901,340 @@ notify():当执行notify方法时，取出**_WaitSet**列表中的第一个，�
 - QMode = 0，不做什么，继续往下执行。
 - 根据QMode不同策略操作完成(除开QMode==2立即返回)之后的后续操作为：取_EntryList的首元素，如果_EntryList为空就将cxq的首元素取出来放入_EntryList，然后再从_EntryList中取出来。
 
+### ObjectMonitor线程休眠wait()
+
+hotspot\src\share\vm\runtime\objectMonitor.cpp
+
+先进行中断检查，如果被中断则返回
+创建一个ObjectWaiter并加入到链表中，然后释放占有的锁
+再次检查中断或唤醒，没有则将线程休眠
+如果已处于等待队列，则将其转到EntryList可调度队列
+如果被中断或者被其他线程唤醒时就再次抢占锁，抢占成功后wait方法退出
+
+```cpp
+void ObjectMonitor::wait(jlong millis, bool interruptible, TRAPS) {
+  Thread * const Self = THREAD;
+  JavaThread *jt = (JavaThread *)THREAD;
+  EventJavaMonitorWait event;
+  // 检查中断状态
+  if (interruptible && Thread::is_interrupted(Self, true) && !HAS_PENDING_EXCEPTION) {
+  //抛出异常
+    THROW(vmSymbols::java_lang_InterruptedException());
+    return;
+  }
+  //关联线程
+  Self->_Stalled = intptr_t(this);
+  jt->set_current_waiting_monitor(this);
+  //新建节点
+  ObjectWaiter node(Self);
+  node.TState = ObjectWaiter::TS_WAIT;
+  Self->_ParkEvent->reset();
+  OrderAccess::fence();          // ST into Event; membar ; LD interrupted-flag
+  //CAS自旋给WaitSet加锁
+  Thread::SpinAcquire(&_WaitSetLock, "WaitSet - add");
+  //加入WaitSet等待队列
+  AddWaiter(&node);
+  //CAS自旋给WaitSet释放锁
+  Thread::SpinRelease(&_WaitSetLock);
+
+  intptr_t save = _recursions; // record the old recursion count
+  _waiters++;                  // increment the number of waiters
+  _recursions = 0;             // 记录线程重入次数
+  //当前线程从监视器退出
+  exit(true, Self);
+
+  int ret = OS_OK;
+  int WasNotified = 0;
+  { // State transition wrappers
+    OSThread* osthread = Self->osthread();
+    OSThreadWaitState osts(osthread, true);
+    {
+      ThreadBlockInVM tbivm(jt);
+      // Thread is in thread_blocked state and oop access is unsafe.
+      jt->set_suspend_equivalent();
+      //检查是否中断
+      if (interruptible && (Thread::is_interrupted(THREAD, false) || HAS_PENDING_EXCEPTION)) {
+        // Intentionally empty
+      } else if (node._notified == 0) { //未被notify通知
+        if (millis <= 0) {
+          Self->_ParkEvent->park(); //将线程挂起
+        } else {
+          ret = Self->_ParkEvent->park(millis); //挂起指定时间
+        }
+      }
+
+      // were we externally suspended while we were waiting?
+      if (ExitSuspendEquivalent (jt)) {
+        // TODO-FIXME: add -- if succ == Self then succ = null.
+        jt->java_suspend_self();
+      }
+
+    } // Exit thread safepoint: transition _thread_blocked -> _thread_in_vm
+
+    //双重加锁检查，如果已在WaitSet则从WaitSet移到EntryList
+    if (node.TState == ObjectWaiter::TS_WAIT) {
+      Thread::SpinAcquire(&_WaitSetLock, "WaitSet - unlink");
+      if (node.TState == ObjectWaiter::TS_WAIT) {
+        //从队列移除
+        DequeueSpecificWaiter(&node);       // unlink from WaitSet
+        node.TState = ObjectWaiter::TS_RUN;
+      }
+      Thread::SpinRelease(&_WaitSetLock);
+    }
+
+    OrderAccess::loadload();
+    if (_succ == Self) _succ = NULL;
+    WasNotified = node._notified;
+    //如果处于被唤醒状态重新抢占锁
+    OrderAccess::fence();
+    Self->_Stalled = 0;
+    ObjectWaiter::TStates v = node.TState;
+    if (v == ObjectWaiter::TS_RUN) { //运行状态
+      enter(Self);
+    } else {
+      ReenterI(Self, &node); //重入
+      node.wait_reenter_end(this);
+    }
+  } // OSThreadWaitState()
+
+  jt->set_current_waiting_monitor(NULL);
+  _recursions = save;     // restore the old recursion count
+  _waiters--;             // decrement the number of waiters
+
+}
+```
+
+就一句话，直接调用C++的park()方法
+
+### notify
+
+hotspot\src\share\vm\runtime\objectMonitor.cpp
+notify方法时Object的notify方法的底层实现，用于“唤醒”WaitSet链表头对应的线程
+
+```c++
+void ObjectMonitor::notify(TRAPS) {
+  if (_WaitSet == NULL) { //等待队列未空，返回
+    return;
+  }
+  INotify(THREAD);
+}
+```
+
+hotspot\src\share\vm\runtime\objectMonitor.cpp
+由policy决定转移到那个调度队列
+
+```c++
+void ObjectMonitor::INotify(Thread * Self) {
+  const int policy = Knob_MoveNotifyee;
+  //锁住队列
+  Thread::SpinAcquire(&_WaitSetLock, "WaitSet - notify");
+  ObjectWaiter * iterator = DequeueWaiter();
+  if (iterator != NULL) {
+    if (policy != 4) { //将状态置为TS_ENTER
+      iterator->TState = ObjectWaiter::TS_ENTER;
+    }
+    iterator->_notified = 1; //标记为被唤醒
+    iterator->_notifier_tid = THREAD_TRACE_ID(Self);
+    ObjectWaiter * list = _EntryList;
+    if (policy == 0) {       //放到EntryList头部
+      if (list == NULL) {
+        iterator->_next = iterator->_prev = NULL;
+        _EntryList = iterator;
+      } else {
+        list->_prev = iterator;
+        iterator->_next = list;
+        iterator->_prev = NULL;
+        _EntryList = iterator;
+      }
+    } else if (policy == 1) {      //放到EntryList尾部
+      if (list == NULL) {
+        iterator->_next = iterator->_prev = NULL;
+        _EntryList = iterator;
+      } else {
+        ObjectWaiter * tail;
+        for (tail = list; tail->_next != NULL; tail = tail->_next) /* empty */;
+        assert(tail != NULL && tail->_next == NULL, "invariant");
+        tail->_next = iterator;
+        iterator->_prev = tail;
+        iterator->_next = NULL;
+      }
+    } else if (policy == 2) {      // 放到cxq头部
+      if (list == NULL) {
+        iterator->_next = iterator->_prev = NULL;
+        _EntryList = iterator;
+      } else {
+        iterator->TState = ObjectWaiter::TS_CXQ;
+        for (;;) {
+          ObjectWaiter * front = _cxq;
+          iterator->_next = front;
+          if (Atomic::cmpxchg_ptr(iterator, &_cxq, front) == front) {
+            break;
+          }
+        }
+      }
+    } else if (policy == 3) {      // 放到cxq尾部
+      iterator->TState = ObjectWaiter::TS_CXQ;
+      for (;;) {
+        ObjectWaiter * tail = _cxq;
+        if (tail == NULL) {
+          iterator->_next = NULL;
+          if (Atomic::cmpxchg_ptr(iterator, &_cxq, NULL) == NULL) {
+            break;
+          }
+        } else {
+          while (tail->_next != NULL) tail = tail->_next;
+          tail->_next = iterator;
+          iterator->_prev = tail;
+          iterator->_next = NULL;
+          break;
+        }
+      }
+    } else { //唤醒
+      ParkEvent * ev = iterator->_event;
+      iterator->TState = ObjectWaiter::TS_RUN;
+      OrderAccess::fence();
+      ev->unpark();
+    }
+    if (policy < 4) {
+     //修改线程状态，记录锁竞争开始
+      iterator->wait_reenter_begin(this);
+    }
+  }
+  Thread::SpinRelease(&_WaitSetLock);
+}
+```
+
+### 竞争
+
+hotspot\src\share\vm\runtime\objectMonitor.cpp
+
+通过CAS尝试把monitor的_owner字段设置为当前线程；
+如果设置之前的_owner指向当前线程，说明当前线程再次进入monitor，即重入锁，执行_recursions ++ ，记录重入的次数；
+查看当前线程得得锁记录中得Displaced Mark Word，即是否是该锁的轻量级锁持有者，如果是则是第一次加重量级锁，设置_recursions为1，_owner为当前线程，该线程成功获得锁并返回；
+如果获取锁失败，则等待锁的释放；
+
+```c++
+void ObjectMonitor::enter(TRAPS) {
+  Thread * const Self = THREAD;
+  void * cur = Atomic::cmpxchg_ptr (Self, &_owner, NULL); //返回设置和当前锁的拥有者
+  if (cur == NULL) {
+    return;
+  }
+  if (cur == Self) {
+    //
+    _recursions++;
+    return;
+  }
+  if (Self->is_lock_owned ((address)cur)) { //线程已锁定
+    _recursions = 1;
+    _owner = Self;
+    return;
+  }
+  Self->_Stalled = intptr_t(this);
+  //自旋一次
+  if (Knob_SpinEarly && TrySpin (Self) > 0) {
+    Self->_Stalled = 0;
+    return;
+  }
+  JavaThread * jt = (JavaThread *) Self;
+  Atomic::inc(&_count);
+  EventJavaMonitorEnter event;
+
+  { // Change java thread status to indicate blocked on monitor enter.
+    JavaThreadBlockedOnMonitorEnterState jtbmes(jt, this);
+    OSThreadContendState osts(Self->osthread());
+    ThreadBlockInVM tbivm(jt);
+    Self->set_current_pending_monitor(this);
+    // TODO-FIXME: change the following for(;;) loop to straight-line code.
+    for (;;) {
+      jt->set_suspend_equivalent();
+      
+      EnterI(THREAD); 
+
+      if (!ExitSuspendEquivalent(jt)) break;
+      _recursions = 0;
+      _succ = NULL;
+      exit(false, Self);
+
+      jt->java_suspend_self();
+    }
+    Self->set_current_pending_monitor(NULL);
+  }
+
+  Atomic::dec(&_count);
+  Self->_Stalled = 0;
+}
+```
+
+hotspot\src\share\vm\runtime\objectMonitor.cpp
+
+当前线程被封装成ObjectWaiter对象node，状态设置成ObjectWaiter::TS_CXQ；
+自旋CAS将当前节点使用头插法加入cxq队列
+node节点push到_cxq列表如果失败了，再尝试获取一次锁（因为此时线程加入，可以减少竞争。），如果还是没有获取到锁，则通过park将当前线程挂起，等待被唤醒
+
+```c++
+void ObjectMonitor::EnterI(TRAPS) {
+  Thread * const Self = THREAD;
+  //尝试获取锁
+  if (TryLock (Self) > 0) {
+    return;
+  }
+  if (TrySpin (Self) > 0) {
+    return;
+  }
+  //加入CXQ队列
+  ObjectWaiter node(Self);
+  Self->_ParkEvent->reset();
+  node._prev   = (ObjectWaiter *) 0xBAD;
+  node.TState  = ObjectWaiter::TS_CXQ;
+  ObjectWaiter * nxt;
+  for (;;) {
+    node._next = nxt = _cxq;
+    if (Atomic::cmpxchg_ptr(&node, &_cxq, nxt) == nxt) break;
+    if (TryLock (Self) > 0) {
+      return;
+    }
+  }
+  //自旋重试直到获取到
+  int nWakeups = 0;
+  int recheckInterval = 1;
+
+  for (;;) {
+    if (TryLock(Self) > 0) break;
+    if ((SyncFlags & 2) && _Responsible == NULL) {
+      Atomic::cmpxchg_ptr(Self, &_Responsible, NULL);
+    }
+    // park self
+    if (_Responsible == Self || (SyncFlags & 1)) {
+      //休眠指定秒数
+      Self->_ParkEvent->park((jlong) recheckInterval)
+      recheckInterval *= 8;
+      if (recheckInterval > MAX_RECHECK_INTERVAL) {
+        recheckInterval = MAX_RECHECK_INTERVAL;
+      }
+    } else {
+      Self->_ParkEvent->park();
+    }
+
+    if (TryLock(Self) > 0) break;
+    ++nWakeups;
+    if ((Knob_SpinAfterFutile & 1) && TrySpin(Self) > 0) break;
+    if ((Knob_ResetEvent & 1) && Self->_ParkEvent->fired()) {
+      Self->_ParkEvent->reset();
+      OrderAccess::fence();
+    }
+    if (_succ == Self) _succ = NULL;
+
+    // Invariant: after clearing _succ a thread *must* retry _owner before parking.
+    OrderAccess::fence();
+  }
+  UnlinkAfterAcquire(Self, &node);
+  return;
+}
+```
+
+ObjectMonitor主要通过队列来管理多线程竞争。通过enter()方法竞争锁，竞争失败挂入到竞争队列中，参与下一次唤醒竞争。线程锁对象通过wait()方法将当前线程阻塞，进入等待队列，让出锁。线程锁对象通过notify()方法唤醒线程，将等待线程从等待队列移动到竞争队列参与锁竞争，此过程不一定会释放锁。当锁释放时会唤醒竞争队列竞争锁。
+
 ## 关于synchronized关键字的思考
 
 终于写完了，说点其他的。
