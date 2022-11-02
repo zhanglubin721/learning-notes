@@ -311,6 +311,8 @@ protected static class AntPatternComparator implements Comparator<String> {
 2. 获取比较器，将匹配上的多个controller放到比较器中进行排序
 3. 去排完序后的list的第0位
 
+上面也有源码，只不过第一次学的时候没有注意看，把很重要的匹配部分源码看漏了，所以这里直接贴图
+
 ![image-20221102174156877](image/image-20221102174156877.png)
 
 ## 流程总结
