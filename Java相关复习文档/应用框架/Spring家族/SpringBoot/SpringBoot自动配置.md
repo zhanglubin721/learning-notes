@@ -134,7 +134,6 @@ public String[] selectImports(AnnotationMetadata annotationMetadata) {
 }
 ```
 
-
 2、getAutoConfigurationEntry：根据导入的@Configuration类的AnnotationMetadata返回AutoConfigurationImportSelector.AutoConfigurationEntry
 
 ```java
@@ -160,7 +159,7 @@ this.getCandidateConfigurations(annotationMetadata, attributes)这里断点查�
 
 ![在这里插入图片描述](<image/78508c6721bd44f1b348a7f405917ddc.png>)<br>
 
- configurations数组长度为133，并且文件后缀名都为 \*\*AutoConfiguration
+ configurations数组长度为133，并且文件后缀名都为 AutoConfiguration
 
 **看到这里我们又的到一个结论： 这些都是候选的配置类，经过去重，去除需要的排除的依赖，最终的组件才是这个环境需要的所有组件。有了自动配置，就不需要我们自己手写配置的值了，配置类有默认值的。**
 
@@ -283,13 +282,13 @@ META-INF/spring.factories文件在哪里呢？—— 在所有引入的java包�
 
 ![在这里插入图片描述](<image/07fda268f2bb4aae80681f0de9c3fa79.png>)
 
- 该方法作用是加载所有依赖的路径META-INF/spring.factories文件，通过map结构保存，key为文件中定义的一些标识工厂类，value就是能自动配置的一些工厂实现的类，value用list保存并去重。
+该方法作用是加载所有依赖的路径META-INF/spring.factories文件，通过map结构保存，key为文件中定义的一些标识工厂类，value就是能自动配置的一些工厂实现的类，value用list保存并去重。
 
 在回看 loadSpringFactories(classLoaderToUse).getOrDefault(factoryTypeName, Collections.emptyList());
 
 因为 loadFactoryNames 方法携带过来的第一个参数为 EnableAutoConfiguration.class，所以 factoryType 值也为 EnableAutoConfiguration.class，那么 factoryTypeName 值为 EnableAutoConfiguration。拿到的值就是META-INF/spring.factories文件下的key为 org.springframework.boot.autoconfigure.EnableAutoConfiguration的值
 
- getOrDefault 当 Map 集合中有这个 key 时，就使用这个 key值，如果没有就使用默认值空数组
+getOrDefault 当 Map 集合中有这个 key 时，就使用这个 key值，如果没有就使用默认值空数组
 
 **结论：**
 
