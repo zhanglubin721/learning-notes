@@ -297,6 +297,156 @@ public class XxlJobDemoHandler {
 
 这就是简单的Demo演示，非常简单，上手也快。
 
+# 第二个HelloWord
+
+<span style="color:#fe2c24;">官方文档</span>
+
+[ 分布式任务调度平台XXL-JOB](<https://www.xuxueli.com/xxl-job/> "  分布式任务调度平台XXL-JOB")
+
+-  ### Step1: pom.xml 引入依赖
+
+```xml
+<dependency>
+  <groupId>com.xuxueli</groupId>
+  <artifactId>xxl-job-core</artifactId>
+  <version>2.3.1</version>
+</dependency>
+```
+
+
+
+- ### Step2: yaml添加配置 <span style="color:#fe2c24;">application.yml</span>
+
+addresses: http://ip:port/xxl-job-admin           #xxljob调度中心部署 
+appname: weather                                        	  #xxljob配置的执行器名称
+port: 19900                                                     	  #xxljob配置的端口号，默认为9999
+
+```yml
+xxl:
+  job:
+    admin:
+      addresses: http://ip:port/xxl-job-admin  #xxljob调度中心部署 例如：http://127.0.0.1:8080/xxl-job-admin
+    executor:
+      address:
+      appname: weather #xxljob配置的执行器名称，
+      ip:             #执行器IP，默认为空表示自动获取IP
+      port: 19900 #xxljob配置的端口号，默认为9999
+      logpath: /data/xxl-job/jobhandler  #执行器运行日志文件存储磁盘路径
+      logretentiondays: -1  #调度中心日志表数据保存天数，过期日志自动清理；限制大于等于7时生效，否则, 如-1，关闭自动清理功能
+    accessToken: default_token #调度中心通讯TOKEN [选填]：非空时启用
+```
+
+
+
+- ### Step3: 引入配置类 <span style="color:#fe2c24;">XxlJobConfig.java</span>
+
+```java
+import com.xxl.job.core.executor.impl.XxlJobSpringExecutor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+ 
+/**
+ * xxl-job config
+ *
+ * @author xuxueli 2017-04-28
+ */
+@Configuration
+public class XxlJobConfig {
+    private Logger logger = LoggerFactory.getLogger(XxlJobConfig.class);
+ 
+    @Value("${xxl.job.admin.addresses}")
+    private String adminAddresses;
+ 
+    @Value("${xxl.job.accessToken}")
+    private String accessToken;
+ 
+    @Value("${xxl.job.executor.appname}")
+    private String appname;
+ 
+    @Value("${xxl.job.executor.address}")
+    private String address;
+ 
+    @Value("${xxl.job.executor.ip}")
+    private String ip;
+ 
+    @Value("${xxl.job.executor.port}")
+    private int port;
+ 
+    @Value("${xxl.job.executor.logpath}")
+    private String logPath;
+ 
+    @Value("${xxl.job.executor.logretentiondays}")
+    private int logRetentionDays;
+ 
+ 
+    @Bean
+    public XxlJobSpringExecutor xxlJobExecutor() {
+        logger.info(">>>>>>>>>>> xxl-job config init.");
+        XxlJobSpringExecutor xxlJobSpringExecutor = new XxlJobSpringExecutor();
+        xxlJobSpringExecutor.setAdminAddresses(adminAddresses);
+        xxlJobSpringExecutor.setAppname(appname);
+        xxlJobSpringExecutor.setAddress(address);
+        xxlJobSpringExecutor.setIp(ip);
+        xxlJobSpringExecutor.setPort(port);
+        xxlJobSpringExecutor.setAccessToken(accessToken);
+        xxlJobSpringExecutor.setLogPath(logPath);
+        xxlJobSpringExecutor.setLogRetentionDays(logRetentionDays);
+        return xxlJobSpringExecutor;
+    }
+ 
+}
+```
+
+
+
+- ### Step4:方法上加注解即可 @XxlJob("weatherNow")
+
+编写[定时任务](<https://so.csdn.net/so/search?q=%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1&spm=1001.2101.3001.7020>)服务类，如天气服务 WeatherJob.java
+
+注意同项目中<span style="color:#fe2c24;">@XxlJob中的命名不能重复</span>
+
+```java
+@Component
+@Slf4j
+public class WeatherJob {
+ 
+    /**
+     * 1、定时更新当前天气(10min)
+     */
+    @XxlJob("weatherNow")
+    public void weatherNow() throws Exception {
+        log.info(">>>>>>>>>>>>>>>>>>>>>>>>XxlJob: get weatherNow .");
+        List<WeatherChinaCity> cityList = weatherChinaCityService.getUpdateCity();
+        for (WeatherChinaCity c : cityList) {
+            weatherNowService.updateNow(c.getId());
+        }
+ 
+    }
+ 
+}
+```
+
+
+
+- ### Step5:调度中心添加执行器
+
+[http://ip:port/xxl-job-admin/toLogin](<http://47.104.191.212:18080/xxl-job-admin/toLogin> "http://ip:port/xxl-job-admin/toLogin")
+
+执行器名称（Appname）：见Step2 appname: weather #xxljob配置的执行器名称，
+
+![img](image/acc2c72e44dc4b62a0d768f59314236a.png)
+
+
+
+- ### Step6:添加执行器的定时任务
+
+![img](image/97730c0378244172aa6ab762ec25c529.png)
+
+![img](image/a71a7e6cc6d340ef89fa5c9e4d33a2e2.png)
+
 # 谈谈架构设计
 
 下面简单地说一下xxl-job的架构，我们先看官网提供的一张架构图来分析。
