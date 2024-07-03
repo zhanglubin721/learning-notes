@@ -40,7 +40,7 @@ REPLACE INTO books SELECT 1, 'MySQL Manual' FROM books
 
 　　3. replace into tbl_name set col_name=value, ...
 
- 
+**replace into 当表是多个唯一索引，并且即将插入的这样数据与多行都有冲突，则会删除多行并插入新数据** 
 
 **三.insert ignore into**
 

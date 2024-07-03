@@ -117,11 +117,11 @@ MVCC(multi-version-concurrent-control)
 
 说了这么多，云里雾里的，我们来看一个例子：
 
-1. **比如一个事务往 persion表 中插入了一条新纪录，记录如下，name = jerry，age = 24；**
+1. **比如一个事务往 person表 中插入了一条新纪录，记录如下，name = jerry，age = 24；**
 
    **隐式主键 = 1，事务ID和回滚指针都假设为 NULL；**
 
-   ![在这里插入图片描述](image/923dd4e2ab5c45c0b51db52c1f10ae91.png)
+   
 
 2. **现在来了另一个事务1对该记录的 name 做出了修改，改为 tom；**
 
@@ -134,7 +134,7 @@ MVCC(multi-version-concurrent-control)
 
    
 
-3. **又来了一个事务2修改persion表的同一个记录，将 age 修改为 30岁**；
+3. **又来了一个事务2修改person表的同一个记录，将 age 修改为 30岁**；
 
    1. 在**事务2**修改该行数据之前，数据库继续给他上排他锁。
    2. 上锁完毕之后，把该行数据拷贝到 **undo log** 中，作为旧记录，发现**操作的这行记录**已经有**undo log** 的记录了，那么最新的旧数据作为链表的表头，插在这行记录的 **undo log** 日志的最前面。
@@ -144,6 +144,9 @@ MVCC(multi-version-concurrent-control)
 ![在这里插入图片描述](image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBATm9ibGVnYXNlc2dvbw==,size_20,color_FFFFFF,t_70,g_se,x_16-20220621150134817.png)
 
 从上面几个例子可以看出，不同事物或者相同事务对同一个记录的修改，会导致该记录的 **undo log 成为一条版本记录链**。**undo log 的链首就是最新的旧记录**，**尾部就是最旧的记录**（当然，就像之前所说的该 ==**undo log 的节点可能是会被 purge线程 清除掉的**==，像图中的第一条 **insert undo log**， 其实在事务提交之后可能就被删除丢失了，不过这里为了演示所以还放在这里，假设没被清除）。
+
+当提交一个事务时，该事务的 undo log 可以被清除。但实际上，undo log 在磁盘上的清除操作是在新的事务需要使用 undo log 时才真正执行的。
+由于 undo log 被保存在磁盘上，因此可以保证其在数据库崩溃后的持久性。这意味着即使在数据库崩溃后，也仍然可以使用 undo log 来恢复数据
 
 
 
