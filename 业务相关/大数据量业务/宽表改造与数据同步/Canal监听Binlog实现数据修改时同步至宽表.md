@@ -94,7 +94,7 @@ public class SimpleCanalClientExample {
 
             for (CanalEntry.RowData rowData : rowChage.getRowDatasList()) {
                 //rowChage.getRowDatasList()表示这个实践中发生的所有行变更
-                
+
                 // 获取变更前的列
                 List<CanalEntry.Column> beforeColumns = rowData.getBeforeColumnsList();
 
@@ -110,7 +110,7 @@ public class SimpleCanalClientExample {
                 if (beforeName != null && !beforeName.equals(afterName)) {
                     updateOrderTable(id, afterName);
                 }
-                
+
             }
         }
     }
