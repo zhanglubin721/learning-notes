@@ -157,7 +157,7 @@ public class SimpleCanalClientExample {
 
 1、canal作为整个流程中最重要的一环，canal本身是最重要的，但是由于canal 阿里官方缺少技术文档，最重要的性能指标不知道，所以首要任务是对canal进行压测，得到性能指标。根据真实业务场景的流量，最终测得canal监听到binlog到发送给RocketMQ再到消费者接受到消息平均耗时90ms（单台canal），所以canal这一环完全不用担心。
 
-2、实现canal高可用，Canal集群的运行模式是选举机制，通过ZooKeeper实现的。在所有的Canal Server实例中，会选举出一个运行在主模式，其他的运行在备模式。处于主模式的Canal Server负责接收MySQL的binlog数据，并将数据写入到ZooKeeper。处于备模式的Canal Server则不接收数据，但会定期检查主Server的状态，如果主Server宕机，那么会从备模式的Server中选举一个新的主Server。这部分由运维验证与搭建
+2、实现canal高可用，Canal集群的运行模式是选举机制，通过ZooKeeper实现的。在所有的Canal Server实例中，会选举出一个运行在主模式，其他的运行在备模式。处于主模式的Canal Server负责接收MySQL的binlog数据，并将数据写入到ZooKeeper。处于备模式的Canal Server则不接收数据，但会定期检查主Server的状态，如果主Server宕机，那么会从备模式的Server中选举一个新的主Server。这部分由运维验证与搭建，搭建canal admin
 
 3、canal读取到数据后的分发逻辑。特定的库表事件要发送到特定的mq的topic中。
 
