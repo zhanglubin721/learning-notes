@@ -124,9 +124,6 @@ PERCENT_RANK()函数是等级值百分比函数。按照如下方式进行计算
 
 - <strong>PERCENT_RANK() 通常用来表示，一种概率统计率的计算</strong>
 
-
-<!-- -->
-
 ### CUME_DIST()
 
 
@@ -180,8 +177,6 @@ SELECT sum(shinho_goal_prdcateg_sale_volume_first_year) OVER() AS sum_value ,t.*
 
 - **查询语句的处理顺序依次为 FROM、WHERE、GROUP BY、聚合函数、HAVING、窗口函数、SELECT DISTINCT、ORDER BY、LIMIT**
 - **窗口函数只能出现在select列表和order by子句中**
-
-<!-- -->
 
 ## 普通共用表表达式：
 
@@ -328,7 +323,7 @@ JSON\_MERGE\_PRESERV()
 
 新增 INFORMATION\_SCHEMA.INNODB\_CACHED\_INDEXES，查看每个索引缓存在 InnoDB 缓冲池中的索引页数。
 
-InnoDB 临时表都将在共享临时表空间 ibtmp1 中创建。<br>
+InnoDB 临时表都将在共享临时表空间 ibtmp1 中创建。
 
  对于 SELECT ... FOR SHARE 和 SELECT ... FOR UPDATE 语句，InnoDB 支持 NOWAIT
 
@@ -336,7 +331,7 @@ InnoDB 临时表都将在共享临时表空间 ibtmp1 中创建。<br>
 
 innodb\_undo\_tablespaces 的最小值为 2，并且不再允许将 innodb\_undo\_tablespaces 设置为 0。 最小值 2 确保回滚段始终在撤消表空间中 创建，而不是在系统表空间中创建。
 
-支持 ALTER TABLESPACE ... RENAME TO 语法。<br>
+支持 ALTER TABLESPACE ... RENAME TO 语法。
 
  新增 innodb\_dedicated\_server，让 InnoDB 根据服务器上检测到的内存量自动
 
