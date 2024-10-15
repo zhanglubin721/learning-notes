@@ -98,7 +98,7 @@ public interface Future<V> {
 
 ![img](image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAc2VybW9ubGl6aGk=,size_20,color_FFFFFF,t_70,g_se,x_16.png)
 
-`Future`归根结底只是一个接口，而`FutureTask`实现了这个接口，同时还实现了`Runnalbe`接口，这样`FutureTask`就相当于是消费者和生产者的桥梁了，消费者可以通过`FutureTask`存储任务的执行结果，跟新任务的状态：未开始、处理中、已完成、已取消等等。而任务的生产者可以拿到`FutureTask`被转型为`Future`接口，可以阻塞式的获取处理结果，非阻塞式获取任务处理状态
+`Future`归根结底只是一个接口，而`FutureTask`实现了这个接口，同时还实现了`Runnalbe`接口，这样`FutureTask`就相当于是消费者和生产者的桥梁了，消费者可以通过`FutureTask`存储任务的执行结果，更新任务的状态：未开始、处理中、已完成、已取消等等。而任务的生产者可以拿到`FutureTask`被转型为`Future`接口，可以阻塞式的获取处理结果，非阻塞式获取任务处理状态
 
 总结：**FutureTask既可以被当做Runnable来执行，也可以被当做Future来获取Callable的返回结果**。
 

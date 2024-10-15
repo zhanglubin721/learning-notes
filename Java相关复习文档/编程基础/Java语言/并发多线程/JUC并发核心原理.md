@@ -629,6 +629,93 @@ Lock和Condition结合应用以实现线程按序交替。
 
 **案例：**
 
+假设我们尝试实现一个简单的生产者-消费者模型，其中有两个条件变量，一个用于表示缓冲区为空（消费者等待生产者生产），另一个表示缓冲区已满（生产者等待消费者消费）。
+
+```java
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+public class ProducerConsumerExample {
+    private final Lock lock = new ReentrantLock();
+    private final Condition notEmpty = lock.newCondition();
+    private final Condition notFull = lock.newCondition();
+    private final int[] buffer = new int[10];
+    private int count, putIndex, takeIndex;
+
+    public void produce(int value) throws InterruptedException {
+        lock.lock();
+        try {
+            while (count == buffer.length) {
+                notFull.await();  // 缓冲区已满，等待消费者消费
+            }
+            buffer[putIndex] = value;
+            putIndex = (putIndex + 1) % buffer.length;
+            count++;
+            notEmpty.signal();  // 通知消费者有数据可消费
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public int consume() throws InterruptedException {
+        lock.lock();
+        try {
+            while (count == 0) {
+                notEmpty.await();  // 缓冲区为空，等待生产者生产
+            }
+            int value = buffer[takeIndex];
+            takeIndex = (takeIndex + 1) % buffer.length;
+            count--;
+            notFull.signal();  // 通知生产者缓冲区有空位
+            return value;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public static void main(String[] args) {
+        ProducerConsumerExample example = new ProducerConsumerExample();
+        
+        // 生产者线程
+        Thread producer = new Thread(() -> {
+            try {
+                for (int i = 0; i < 20; i++) {
+                    example.produce(i);
+                    System.out.println("Produced: " + i);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+
+        // 消费者线程
+        Thread consumer = new Thread(() -> {
+            try {
+                for (int i = 0; i < 20; i++) {
+                    int value = example.consume();
+                    System.out.println("Consumed: " + value);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+
+        producer.start();
+        consumer.start();
+
+        try {
+            producer.join();
+            consumer.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+}
+```
+
+
+
 编写一个程序，开启 3 个线程，这三个线程的 ID 分别为A、B、C，每个线程将自己的 ID 在屏幕上打印 10 遍，要求输出的结果必须按顺序显示。如：ABCABCABC…… 依次递归。
 
 ```java
