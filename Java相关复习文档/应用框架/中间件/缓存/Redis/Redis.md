@@ -1034,6 +1034,8 @@ sentinel down-after-milliseconds mymaster 5000
 
 **redis主从复制+哨兵机制(监控、提醒、自动故障迁移)+keepalived(自动重启)，若重启多次仍不成功，可以通过邮件短信等方式通知。**
 
+![image-20241021233123749](image/image-20241021233123749.png)
+
 ## Redis实现分布式锁
 
 ```redis
@@ -1282,3 +1284,15 @@ Redisson 是一个 Java 语言实现的 Redis SDK 客户端，在使用分布式
 **Redlock还处于争论中，暂时了解一下就行**
 
 ## Redisson的使用
+
+## Redis内存碎片问题
+
+![image-20241021222942076](image/image-20241021222942076.png)
+
+![image-20241021224946072](image/image-20241021224946072.png)
+
+## Redis数据分片
+
+![image-20241021233527614](image/image-20241021233527614.png)
+
+![image-20241021234103184](image/image-20241021234103184.png)
