@@ -6,6 +6,8 @@
 
 ![在这里插入图片描述](image/watermark,type_ZHJvaWRzYW5zZmFsbGJhY2s,shadow_50,text_Q1NETiBA5aSp6buR6K-36Zet55y85Li26aOO,size_20,color_FFFFFF,t_70,g_se,x_16.png)
 
+![image-20250210223856185](image/image-20250210223856185-9198337.png)
+
 整个执行过程如上图。server层执行过程都是一样。不同存储引擎执行的过程不一样。这里了以最常用的innodb引擎为例。执行一条update语句时，先后经过连接器、分析器、优化器最后有执行器调用innodb引擎。这里主要分析innodb引擎的执行过程。
 
 1. 先从磁盘中加载对应要修改记录的一页数据到BufferPool(缓存池，一块内存)，缓存池每次加载数据都是一页或者多页加载，不会只加载单条记录（<u>**MySQL自动完成，不是由用户响应出发的）**</u>。
