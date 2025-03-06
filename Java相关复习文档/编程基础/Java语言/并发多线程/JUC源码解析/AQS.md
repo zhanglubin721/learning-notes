@@ -687,6 +687,56 @@ final boolean transferForSignal(Node node) {
 
 条件同步器是基于AQS的基础同步器实现的，两者之间也有一定的层级关系，条件同步器可以说是基础同步器的上层实现。要搞清楚两者之间的关联，关键在于理解节点在同步队列和条件队列之间转移策略。
 
+### CLH队列
+
+```java
+import java.util.concurrent.atomic.AtomicReference;
+
+// 精准还原CLH锁的工业级实现（非AQS简化版）
+public class CLHLock {
+    // 节点结构：每个线程持有前驱节点的引用
+    private static class Node {
+        // 使用volatile保证状态可见性（非JVM隐式保证）
+        volatile boolean locked = true;
+    }
+
+    // 尾部指针（CAS操作核心）
+    private final AtomicReference<Node> tail = new AtomicReference<>();
+    // 当前线程持有的节点（ThreadLocal保证隔离性）
+    private final ThreadLocal<Node> myNode = ThreadLocal.withInitial(Node::new);
+    // 前驱节点缓存（优化自旋性能）
+    private final ThreadLocal<Node> myPred = new ThreadLocal<>();
+
+    public void lock() {
+        final Node node = myNode.get();
+        node.locked = true; // 标记当前节点需要获取锁
+        
+        // CAS入队（关键并发控制点）
+        Node pred = tail.getAndSet(node);
+        myPred.set(pred);  // 记录前驱
+        
+        // 自旋前驱节点的locked状态（优化点：避免总线风暴）
+        while (pred != null && pred.locked) {
+            // 现代CPU架构优化：加入内存屏障提示
+            Thread.onSpinWait(); // JDK9+特性，提升自旋效率
+        }
+    }
+
+    public void unlock() {
+        final Node node = myNode.get();
+        node.locked = false; // 释放锁信号
+        
+        // 重置节点供下次使用（防御性编程）
+        myNode.set(myPred.get()); // 重要！将前驱设为新节点，防止状态污染
+    }
+}
+
+```
+
+![image-20250306142725112](image/image-20250306142725112-1242446.png)
+
+
+
 ## 总结
 
 AQS是整个JUC包的基础，理解了AQS，对JUC里面其他类的学习都很有帮助。虽然还有部分方法笔者没有在文中详细讲解，但这些方法实现方式与咱们所讲到的方法大同小异，希望大家可以见微知著，对AQS整体有一个很好的理解。
