@@ -1195,3 +1195,7 @@ java.lang.ClassLoader 的 loadClass() 实现了双亲委派模型的逻辑，因
 ## JIT
 
 ![image-20241218162539933](image/image-20241218162539933-4510343.png)
+
+## 对象逃逸分析
+
+![image-20250310140752400](image/image-20250310140752400-1586873.png)
