@@ -121,6 +121,8 @@ NameServer可以看作是RocketMQ的注册中心，它管理两部分数据：�
 
 也就是说每个Topic在Broker上会划分成几个逻辑队列，每个逻辑队列保存一部分消息数据，但是保存的消息数据实际上不是真正的消息数据，而是指向commit log的消息索引。
 
+但是RocketMQ可以保证高可用，是通过每个borker都有自己的主从结构实现的
+
 `Queue不是真正存储Message的地方，真正存储Message的地方是在CommitLog`。
 
 如图
