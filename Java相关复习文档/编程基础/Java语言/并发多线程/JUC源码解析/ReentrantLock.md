@@ -324,6 +324,10 @@ Condition具有比wait()/notify()更好的灵活性，具体体现在：
 - 一个锁实例，可以绑定多个Condition实例，实现多路通知；
 - notify()方法进行通知时，是随机进行选择的，但重入锁结合Condition对象，可以实现有选择性的通知，这是非常重要的。
 
+## synchronized和ReentrantLock有什么区别
+
+![image-20250411180426052](image/image-20250411180426052.png)
+
 ## synchronized和ReentrantLock的选择
 
 > ReentrantLock在加锁和内存上提供的语义与内置锁synchronized相同，此外它还提供了一些其他功能，包括**定时的锁等待、可中断的锁等待、公平性，以及实现非块结构的加锁**。**从性能方面来说，在JDK5的早期版本中，ReentrantLock的性能远远好于synchronized，但是从JDK6开始，JDK在synchronized上做了大量优化，使得两者的性能差距不大。**synchronized的优点就是简洁。 所以说，两者之间的选择还是要看具体的需求，ReentrantLock可以作为一种高级工具，当需要一些高级功能时可以使用它。
