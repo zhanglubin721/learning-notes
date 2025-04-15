@@ -113,6 +113,10 @@ public interface Collection<E> extends Iterable<E> {
 | boolean retainAll(Collection<?> c))  |  判断集合中不在集合c中的元素  |
 |             void clear()             |         清空所有元素          |
 
+## iterator迭代器
+
+![image-20250415231421236](image/image-20250415231421236.png)
+
 ## List
 
  List表示一串有序的集合，和Collection接口含义不同的是List突出有序的含义。
