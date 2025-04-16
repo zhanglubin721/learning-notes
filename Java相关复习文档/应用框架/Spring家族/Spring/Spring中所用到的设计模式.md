@@ -18,8 +18,6 @@ Spring是一个非常优秀的开源[框架](<https://so.csdn.net/so/search?q=%E
 >
 > （8）桥接模式：可以根据客户的需求能够动态切换不同的数据源。比如我们的项目需要连接多个数据库，客户在每次访问中根据需要会去访问不同的数据库
 
-
-
 ## 一、工厂模式：
 
 对于工厂模式不了解地读者可以阅读另外一篇文章：[Java设计模式之创建型模式：工厂模式（简单工厂模式+工厂方法模式）](<https://blog.csdn.net/a745233700/article/details/83591459>)
@@ -133,6 +131,10 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 ```
 
 从源码中可以看出，是通过ConcurrentHashMap的方式，如果在Map中存在则直接返回，如果不存在则创建，并且put进Map集合中，并且整段逻辑是使用同步代码块包住的，所以是线程安全的。
+
+### 三种单例模式的写法
+
+![image-20250416215047685](image/image-20250416215047685.png)
 
 ## 三、策略模式：
 
