@@ -371,7 +371,17 @@ protected transient int modCount = 0;
 
 当然不是，其中有一个关键的modCount, 该变量是记录list修改的次数的，当写入完之后如果发现修改次数和开始序列化前不一致就会抛出异常，序列化失败。这样就保证了序列化过程中是未经修改的数据,保证了序列化安全。（java集合中都是这样实现）
 
+#### JDK9之后的优化
+
+![image-20250417220902899](image/image-20250417220902899.png)
+
+
+
+![image-20250417221014181](image/image-20250417221014181.png)
+
 ### LinkedList
+
+![image-20250417221908511](image/image-20250417221908511.png)
 
 #### LinkedList继承关系
 
@@ -509,6 +519,8 @@ public boolean add(E e) {
     return true;
 }
 ```
+
+
 
 ### Vector
 
@@ -1718,6 +1730,8 @@ static final int hash(Object key) {
 
 #### 扩容
 
+![image-20250417224322718](image/image-20250417224322718.png)
+
 当hashmap中的元素个数超过数组大小loadFactor时，就会进行数组扩容，loadFactor的默认值为0.75，也就是说，默认情况下，数组大小为16，那么当hashmap中元素个数超过16 × 0.75=12的时候，就把数组的大小扩展为2 × 16 = 32，即扩大一倍，然后重新计算每个元素在数组中的位置，而这是一个非常消耗性能的操作，所以如果我们已经预知hashmap中元素的个数，那么预设元素的个数能够有效的提高hashmap的性能。
 
 #### 查找方法
@@ -1843,6 +1857,10 @@ final TreeNode<K,V> putTreeVal(HashMap<K,V> map, Node<K,V>[] tab,
 ```
 
 
+
+### LinkedHashMap
+
+![image-20250417233235854](image/image-20250417233235854.png)
 
 ### HashTable
 
