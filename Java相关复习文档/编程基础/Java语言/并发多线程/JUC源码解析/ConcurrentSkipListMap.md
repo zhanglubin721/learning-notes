@@ -330,6 +330,12 @@ private V doPut(K key, V value, boolean onlyIfAbstsent){
 
 ## findPredecessor() 寻找前继节点
 
+![image-20250422103616634](image/image-20250422103616634.png)
+
+## 索引构建
+
+![image-20250422110043907](image/image-20250422110043907.png)
+
 总体思路是: 从矩形链表的左上角的 HeadIndex 索引开始, 先向右, 遇到 null, 或 > key 时向下, 重复向右向下找, 一直找到 对应的前继节点(前继节点就是小于 key 的最大节点)
 
 ```java
@@ -374,6 +380,29 @@ private Node<K, V> findPredecessor(Object key, Comparator<? super K> cmp){
     }
 }
 ```
+
+## 如何保证线程安全
+
+![image-20250422110737791](image/image-20250422110737791.png)
+
+## index插入
+
+```java
+Index<K,V> idx = new Index<>(newNode, null, down); // down 是下一层 index
+
+while (true) {
+    Index<K,V> pred = findInsertionPoint(...); // 查找第 i 层插入点
+    Index<K,V> succ = pred.right;
+    idx.right = succ;
+    
+    if (pred.casRight(succ, idx)) { // CAS 插入右边
+        break;
+    }
+    // CAS 失败说明并发冲突，重试
+}
+```
+
+
 
 ## doGet() 获取节点对应的值
 

@@ -752,6 +752,159 @@ Java中关于Queue的实现主要用的是双端队列，毕竟操作更加方�
 
 ### PriorityQueue
 
+![image-20250420231832969](image/image-20250420231832969.png)
+
+#### 小顶堆代码实现
+
+```java
+import java.util.*;
+
+public class MinHeap {
+    private List<Integer> heap;
+
+    public MinHeap() {
+        heap = new ArrayList<>();
+    }
+
+    // 获取堆大小
+    public int size() {
+        return heap.size();
+    }
+
+    // 查看堆顶（最小值）
+    public int peek() {
+        if (heap.isEmpty()) throw new NoSuchElementException("Heap is empty");
+        return heap.get(0);
+    }
+
+    // 插入元素
+    public void offer(int val) {
+        heap.add(val);
+        siftUp(heap.size() - 1);
+    }
+
+    // 删除堆顶并返回
+    public int poll() {
+        if (heap.isEmpty()) throw new NoSuchElementException("Heap is empty");
+        int min = heap.get(0);
+        int last = heap.remove(heap.size() - 1);
+        if (!heap.isEmpty()) {
+            heap.set(0, last);
+            siftDown(0);
+        }
+        return min;
+    }
+
+    // 向上调整
+    private void siftUp(int i) {
+        while (i > 0) {
+            int parent = (i - 1) / 2;
+            if (heap.get(i) < heap.get(parent)) {
+                swap(i, parent);
+                i = parent;
+            } else {
+                break;
+            }
+        }
+    }
+
+    // 向下调整
+    private void siftDown(int i) {
+        int size = heap.size();
+        while (true) {
+            int left = i * 2 + 1;
+            int right = i * 2 + 2;
+            int smallest = i;
+
+            if (left < size && heap.get(left) < heap.get(smallest)) {
+                smallest = left;
+            }
+            if (right < size && heap.get(right) < heap.get(smallest)) {
+                smallest = right;
+            }
+
+            if (smallest != i) {
+                swap(i, smallest);
+                i = smallest;
+            } else {
+                break;
+            }
+        }
+    }
+
+    private void swap(int i, int j) {
+        int tmp = heap.get(i);
+        heap.set(i, heap.get(j));
+        heap.set(j, tmp);
+    }
+
+    // 打印堆内容（调试用）
+    public void printHeap() {
+        System.out.println(heap);
+    }
+
+    // 示例
+    public static void main(String[] args) {
+        MinHeap minHeap = new MinHeap();
+        minHeap.offer(5);
+        minHeap.offer(2);
+        minHeap.offer(7);
+        minHeap.offer(1);
+        minHeap.offer(3);
+
+        minHeap.printHeap(); // 打印堆结构
+
+        System.out.println("Peek: " + minHeap.peek()); // 最小值
+        System.out.println("Poll: " + minHeap.poll()); // 弹出最小值
+        minHeap.printHeap();
+    }
+}
+```
+
+```
+下标：   0   1   2   3   4
+值：    [1, 2, 3, 4, 5]
+
+堆结构：
+         1 (0)
+       /   \
+     2(1)  3(2)
+    /  \
+  4(3) 5(4)
+```
+
+| **下标** | **值** | **说明**   |
+| -------- | ------ | ---------- |
+| 0        | 1      | 堆顶       |
+| 1        | 2      | 1 的左孩子 |
+| 2        | 3      | 1 的右孩子 |
+| 3        | 4      | 2 的左孩子 |
+| 4        | 5      | 2 的右孩子 |
+
+- 对于数组中任意一个索引 i：
+  - **左孩子下标** = 2 * i + 1
+  - **右孩子下标** = 2 * i + 2
+  - **父节点下标** = (i - 1) / 2（整除）
+
+
+
+ 举例说明：
+
+往堆里插入 [5, 2, 7, 1]，过程如下：
+
+1. 插入 5，数组是 [5]
+2. 插入 2，先放末尾 [5, 2]，再向上冒泡，交换为 [2, 5]
+3. 插入 7，不需要冒泡 [2, 5, 7]
+4. 插入 1，放末尾 [2, 5, 7, 1]，向上冒泡：
+   - 1 < 5 → 换成 [2, 1, 7, 5]
+   - 1 < 2 → 换成 [1, 2, 7, 5]
+
+
+
+
+
+
+
 PriorityQueue是Java中唯一一个Queue接口的直接实现，如其名字所示，优先队列，其内部支持按照一定的规则对内部元素进行排序。
 
 #### PriorityQueue继承关系
@@ -1734,6 +1887,103 @@ static final int hash(Object key) {
 
 当hashmap中的元素个数超过数组大小loadFactor时，就会进行数组扩容，loadFactor的默认值为0.75，也就是说，默认情况下，数组大小为16，那么当hashmap中元素个数超过16 × 0.75=12的时候，就把数组的大小扩展为2 × 16 = 32，即扩大一倍，然后重新计算每个元素在数组中的位置，而这是一个非常消耗性能的操作，所以如果我们已经预知hashmap中元素的个数，那么预设元素的个数能够有效的提高hashmap的性能。
 
+#### 树化
+
+## 
+
+```java
+final void treeifyBin(Node<K,V>[] tab, int hash) {
+    int n, index; Node<K,V> e;
+    if (tab == null || (n = tab.length) < MIN_TREEIFY_CAPACITY) {
+        resize(); // 桶太小（<64），先扩容，宁可扩容也不转红黑树
+    } else if ((e = tab[index = (n - 1) & hash]) != null) {
+        // 有链表元素，准备转为红黑树
+        TreeNode<K,V> hd = null, tl = null;
+        do {
+            TreeNode<K,V> p = replacementTreeNode(e, null);
+            if (tl == null)
+                hd = p;
+            else {
+                p.prev = tl; // 维护双向链表
+                tl.next = p;
+            }
+            tl = p;
+        } while ((e = e.next) != null);
+        tab[index] = hd; // 替换成 TreeNode 链表头（非 tree 根）
+        if (hd != null)
+            hd.treeify(tab); // 调用 TreeNode 的 treeify 建树
+    }
+}
+```
+
+1. **容量判断**：
+
+   
+
+   - 如果桶数组长度小于 64（MIN_TREEIFY_CAPACITY），不做树化，而是扩容。
+
+   
+
+2. **链表转 TreeNode 链表**：
+
+   
+
+   - 遍历链表，将普通 Node 转为 TreeNode（继承 Node），构建双向链表。
+
+   
+
+3. **构建红黑树**：
+
+   
+
+   - 调用 TreeNode.treeify() 方法，将链表转换成红黑树结构。
+
+
+
+```java
+final void treeify(Node<K,V>[] tab) {
+    TreeNode<K,V> root = null;
+    for (TreeNode<K,V> x = this, next; x != null; x = next) {
+        next = (TreeNode<K,V>)x.next;
+        x.left = x.right = null;
+        if (root == null) {
+            x.parent = null;
+            x.red = false; // 根节点是黑色
+            root = x;
+        } else {
+            K k = x.key;
+            int h = x.hash;
+            Class<?> kc = null;
+            TreeNode<K,V> p = root;
+            for (;;) {
+                int dir, ph;
+                K pk = p.key;
+                if ((ph = p.hash) > h)
+                    dir = -1;
+                else if (ph < h)
+                    dir = 1;
+                else if ((kc == null && (kc = comparableClassFor(k)) == null) ||
+                         (dir = compareComparables(kc, k, pk)) == 0)
+                    dir = tieBreakOrder(k, pk); // 冲突 hash 时按对象地址做偏序
+                TreeNode<K,V> xp = p;
+                if ((p = (dir <= 0) ? xp.left : xp.right) == null) {
+                    x.parent = xp;
+                    if (dir <= 0)
+                        xp.left = x;
+                    else
+                        xp.right = x;
+                    root = balanceInsertion(root, x); // 红黑树插入 + 旋转
+                    break;
+                }
+            }
+        }
+    }
+    moveRootToFront(tab, root); // 移动到 bucket 开头
+}
+```
+
+
+
 #### 查找方法
 
 ```java
@@ -1861,6 +2111,26 @@ final TreeNode<K,V> putTreeVal(HashMap<K,V> map, Node<K,V>[] tab,
 ### LinkedHashMap
 
 ![image-20250417233235854](image/image-20250417233235854.png)
+
+![image-20250418101628059](image/image-20250418101628059.png)
+
+![image-20250420150552566](image/image-20250420150552566.png)
+
+```java
+afterNodeInsertion(true);
+```
+
+```java
+protected void afterNodeInsertion(boolean evict) {
+    LinkedHashMap.Entry<K,V> eldest;
+    if (evict && (eldest = head) != null && removeEldestEntry(eldest)) {
+        K key = eldest.key;
+        removeNode(hash(key), key, null, false, true);
+    }
+}
+```
+
+
 
 ### HashTable
 

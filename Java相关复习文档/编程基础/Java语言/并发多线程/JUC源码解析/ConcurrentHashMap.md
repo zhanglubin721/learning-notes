@@ -1,5 +1,85 @@
 # ConcurrentHashMap
 
+![image-20250420153432837](image/image-20250420153432837.png)
+
+## 初始化
+
+```java
+private final Node<K,V>[] initTable() {
+    Node<K,V>[] tab;
+    int sc;
+    while ((tab = table) == null || tab.length == 0) {
+        if ((sc = sizeCtl) < 0)
+            Thread.yield(); // 有其他线程在初始化，当前线程让步
+        else if (U.compareAndSetInt(this, SIZECTL, sc, -1)) {
+            // ✅ 当前线程 CAS 抢到了初始化权限（-1 表示正在初始化）
+            try {
+                if ((tab = table) == null || tab.length == 0) {
+                    @SuppressWarnings("unchecked")
+                    Node<K,V>[] nt = (Node<K,V>[])new Node<?,?>[sc];
+                    table = tab = nt;
+                    sc = nt.length - (nt.length >>> 2); // 即 0.75 * length
+                }
+            } finally {
+                sizeCtl = sc; // 释放初始化锁
+            }
+            break;
+        }
+    }
+    return tab;
+}
+```
+
+## 扩容
+
+![image-20250420160504748](image/image-20250420160504748.png)
+
+### ForwardingNode
+
+![image-20250420162116027](image/image-20250420162116027.png)
+
+##### ForwardingNode的工作原理
+
+![image-20250420221006974](image/image-20250420221006974.png)
+
+### 扩容期间不影响读
+
+![image-20250420223122220](image/image-20250420223122220.png)
+
+### 一句话概括为什么扩容期间还可读
+
+扩容时会有旧table和新table，旧table中某个桶所有数据均迁移完毕后，旧table中的这个桶就会被替换成ForwardingNode，ForwardingNode是一个指向新table的引用，对于数据的查询会被转发到新table中完成。例如原本的key zlb存放在旧桶中table[5]的位置，如果table[5]未完成迁移，那么直接在这个桶中查询即可，如果这个桶已经迁移完毕，则相当于get zlb这个命令会被转发到新table中去，重新计算这个key落到哪个桶里。
+
+## 树化
+
+```java
+private final void treeifyBin(Node<K,V>[] tab, int hash) {
+    int n, index; Node<K,V> e;
+    if (tab == null || (n = tab.length) < MIN_TREEIFY_CAPACITY)
+        tryPresize(n << 1); // 容量小于64，扩容
+    else if ((e = tabAt(tab, index = (n - 1) & hash)) != null && e.hash >= 0) {
+        synchronized (e) {
+            if (tabAt(tab, index) == e) { // 确保未被其他线程替换
+                TreeNode<K,V> hd = null, tl = null;
+                for (Node<K,V> p = e; p != null; p = p.next) {
+                    TreeNode<K,V> q = new TreeNode<>(p.hash, p.key, p.val, null, null);
+                    if (tl == null)
+                        hd = q;
+                    else {
+                        q.prev = tl;
+                        tl.next = q;
+                    }
+                    tl = q;
+                }
+                setTabAt(tab, index, new TreeBin<K,V>(hd)); // 放入 TreeBin 管理树节点
+            }
+        }
+    }
+}
+```
+
+
+
 ## 原理解析
 
 利用 ==CAS + synchronized== 来保证并发更新的安全
