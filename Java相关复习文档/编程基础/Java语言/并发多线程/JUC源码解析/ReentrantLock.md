@@ -1,5 +1,20 @@
 # ReentrantLock
 
+| **特性**       | **synchronized**            | **ReentrantLock**                      |
+| -------------- | --------------------------- | -------------------------------------- |
+| 加锁方式       | 隐式（进入同步块）          | 显式（调用 lock()）                    |
+| 解锁方式       | 隐式（退出同步块）          | 显式（调用 unlock()）必须在 finally 中 |
+| 可中断         | ❌ 不可中断                  | ✅ lockInterruptibly() 可响应中断       |
+| 是否可尝试获取 | ❌ 不可尝试                  | ✅ tryLock()                            |
+| 公平性         | ❌ 非公平                    | ✅ 支持公平锁                           |
+| 条件变量       | ❌ 只有一个 wait/notify 集合 | ✅ 支持多个 Condition                   |
+| 可重入性       | ✅                           | ✅                                      |
+| 性能           | JDK1.6后性能差距小          | 可微调特性，适用于复杂场景             |
+
+## 和synchronized的区别
+
+![image-20250424224811733](image/image-20250424224811733.png)
+
 ## 概述
 
 > **ReentrantLock**是一个**可重入的互斥锁**，也被称为**“独占锁”**。在上一篇讲解AQS的时候已经提到，“独占锁”在同一个时间点只能被一个线程持有；而可重入的意思是，ReentrantLock可以被单个线程多次获取。
@@ -424,3 +439,104 @@ private void unparkSuccessor(Node node) {
 ## 非公平锁线程插队
 
 ![image-20250306150314161](image/image-20250306150314161.png)
+
+## 三个线程轮流执行
+
+```java
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+public class ThreeThreadsSequence {
+
+    private final Lock lock = new ReentrantLock();
+    private final Condition c1 = lock.newCondition();
+    private final Condition c2 = lock.newCondition();
+    private final Condition c3 = lock.newCondition();
+
+    private int state = 1; // 1表示线程1，2表示线程2，3表示线程3
+
+    public void print(int threadId, Condition current, Condition next, String value, int loop) {
+        for (int i = 0; i < loop; i++) {
+            lock.lock();
+            try {
+                // 等待轮到自己
+                while (state != threadId) {
+                    current.await();
+                }
+                System.out.print(value);
+                // 修改状态为下一个线程的 id
+                state = threadId % 3 + 1;
+                next.signal(); // 唤醒下一个线程
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                lock.unlock();
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        ThreeThreadsSequence sequence = new ThreeThreadsSequence();
+        int loop = 5; // 每个线程打印5次
+
+        new Thread(() -> sequence.print(1, sequence.c1, sequence.c2, "A", loop)).start();
+        new Thread(() -> sequence.print(2, sequence.c2, sequence.c3, "B", loop)).start();
+        new Thread(() -> sequence.print(3, sequence.c3, sequence.c1, "C", loop)).start();
+    }
+}
+```
+
+```java
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+public class ThreeThreadsSequence {
+
+    private final Lock lock = new ReentrantLock();
+    private final Condition c1 = lock.newCondition();
+    private final Condition c2 = lock.newCondition();
+    private final Condition c3 = lock.newCondition();
+
+    private int state = 1; // 1表示线程1，2表示线程2，3表示线程3
+
+    public void print(int threadId, Condition current, Condition next, String value, int loop) {
+        for (int i = 0; i < loop; i++) {
+            lock.lock();
+            try {
+                // 等待轮到自己
+                while (state != threadId) {
+                    current.await();
+                }
+                System.out.print(value);
+                // 修改状态为下一个线程的 id
+                state = threadId % 3 + 1;
+                next.signal(); // 唤醒下一个线程
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                lock.unlock();
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        ThreeThreadsSequence sequence = new ThreeThreadsSequence();
+        int loop = 5; // 每个线程打印5次
+
+        new Thread(() -> sequence.print(1, sequence.c1, sequence.c2, "A", loop)).start();
+        new Thread(() -> sequence.print(2, sequence.c2, sequence.c3, "B", loop)).start();
+        new Thread(() -> sequence.print(3, sequence.c3, sequence.c1, "C", loop)).start();
+    }
+}
+```
+
+- notifyAll() 为什么不是 notify()？（因为我们不确定哪个线程会被唤醒）
+
+- 和 Lock + Condition 的区别？
+
+  - synchronized 是隐式锁，**粒度粗**，不支持可中断、公平等；
+  - Condition 支持更细粒度的唤醒控制。
+
+  

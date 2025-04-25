@@ -735,6 +735,28 @@ public class CLHLock {
 
 ![image-20250306142725112](image/image-20250306142725112-1242446.png)
 
+### 后继节点为什么需要轮询前驱节点的状态
+
+![image-20250424231348702](image/image-20250424231348702.png)
+
+![image-20250424231652133](image/image-20250424231652133.png)
+
+
+
+```java
+// 线程中断、超时等触发
+if (interrupted || timedOut) {
+    cancelAcquire(node);  // 标记取消，并断开与队列的关联
+}
+```
+
+```java
+while ((pred = node.predecessor()).waitStatus > 0) {
+    node.prev = pred.prev;
+    pred.prev.next = node; // 跳过 CANCELLED 节点
+}
+```
+
 
 
 ## 总结
