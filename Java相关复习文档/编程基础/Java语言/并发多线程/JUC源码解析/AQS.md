@@ -1,5 +1,7 @@
 # AQS
 
+AQS是无中心化的，一切都有线程自己完成自己逻辑之后和之前帮忙完成AQS自己的逻辑
+
 ## 概述
 
 > AbstractQueuedSynchronizer，简称AQS。是一个用于构建锁和同步器的框架，许多同步器都可以通过AQS很容易并且高效地构造出来，如常用的`ReentrantLock`、`Semaphore`、`CountDownLatch`等。基于AQS来构建同步器能带来许多好处。它不仅能极大地减少实现工作，而且也不必处理在多个位置上发生的竞争问题。在基于AQS构建的同步器中，只可能在一个时刻发生阻塞，从而降低上下文切换的开销，并提高吞吐量。Doug Lea 大神在设计AQS时也充分考虑了可伸缩性，因此java.util.concurrent中所有基于AQS构建的同步器都能获得这个优势。大多数开发者都不会直接使用AQS，JUC中标准同步器类都能够满足绝大多数情况的需求。但如果能了解标准同步器类的实现方式，那么对理解它们的工作原理是非常有帮助的。
@@ -125,6 +127,8 @@ private static final int THROW_IE    = -1;
 *注：由于部分方法在AQS中未实现，文中会引入`ReentrantLock`中部分方法实现，建议同学们结合[JUC源码分析-JUC锁（一）：ReetrantLock](https://www.jianshu.com/p/38fe92bcca7e)学习以下内容。*
 
 #### acquire(int)
+
+![image-20250426231133232](image/image-20250426231133232.png)
 
 ```java
 //独占模式获取资源
@@ -757,7 +761,15 @@ while ((pred = node.predecessor()).waitStatus > 0) {
 }
 ```
 
+### AQS为什么不需要后继节点轮询前驱节点状态了
 
+先看第一张图，再看第二张图
+
+![image-20250426230404995](image/image-20250426230404995.png)
+
+总结一句话就是即便线程因为报错意外退出，AQS.acquire方法也会catch住异常，然后执行cancelAcquire去唤醒后继节点，交由后继节点来修复队列
+
+![image-20250426225606205](image/image-20250426225606205.png)
 
 ## 总结
 
