@@ -40,7 +40,7 @@ private final Node<K,V>[] initTable() {
 
 ##### ForwardingNode的工作原理
 
-![image-20250420221006974](image/image-20250420221006974.png)
+<img src="image/image-20250420221006974.png" alt="image-20250420221006974"  />
 
 ### 扩容期间不影响读
 
