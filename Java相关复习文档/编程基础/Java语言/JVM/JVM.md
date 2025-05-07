@@ -201,6 +201,10 @@ public class Changliang {
 
 ![image-20250416215637455](image/image-20250416215637455.png)
 
+### 可栈上分配
+
+![image-20250507151523824](image/image-20250507151523824.png)
+
 ## 2. 内存溢出异常(OOM，Out Of Memeory)
 
 内存溢出就是内存不够用，当JVM因为没有足够的内存来为对象分配空间并且垃圾回收器也已经没有空间可回收时，就会抛出 `java.lang.OutOfMemoryError` （注：非exception，因为这个问题已经严重到不足以被应用处理）
@@ -987,6 +991,8 @@ public static StringBuffer craeteStringBuffer(String s1, String s2) {
 StringBuffer sb是一个方法内部变量，上述代码中直接将sb返回，这样这个StringBuffer有可能被其他方法所改变，这样它的作用域就不只是在方法内部，虽然它是一个局部变量，称其逃逸到了方法外部。如果想要StringBuffer sb不逃出方法，可以写成：return sb.toString()；
 
 ## 6.类加载机制
+
+![image-20250507181802079](image/image-20250507181802079.png)
 
 虚拟机把描述类的数据从Class文件加载到内存，并对数据进行校验、解析和初始化，最终形成可以被虚拟机直接使用的Java类型，这就是虚拟机的类加载机制。JVM是**懒加载**（节约系统资源）。
 
