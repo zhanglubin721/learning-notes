@@ -47,7 +47,7 @@ public AnnotationConfigApplicationContext(Class<?>... annotatedClasses) {
 
 根据上图分析，代码运行到这里时候，Spring 容器已经构造完毕，那么就可以为容器添加一些内置组件了，其中最主要的组件便是 ConfigurationClassPostProcessor 和 AutowiredAnnotationBeanPostProcessor ，前者是一个 beanFactory 后置处理器，用来完成 bean 的扫描与注入工作，后者是一个 bean 后置处理器，用来完成 @AutoWired 自动注入。
 
-![](<image/2edced2507473780cbb4993fdac2d757.jpeg>)
+<img src="image/2edced2507473780cbb4993fdac2d757.jpeg"  />
 
 
 
