@@ -296,3 +296,19 @@ getEarlyBeanReference和postProcessAfterInitializa这两个最终都是调用wra
 1. 「**singletonObjects**」：缓存某个 beanName 对应的经过了完整生命周期的bean；
 2. 「**earlySingletonObjects**」：缓存提前拿原始对象进行了 AOP 之后得到的代理对象，原始对象还没有进行属性注入和后续的 BeanPostProcesso r等生命周期；
 3. 「**singletonFactories**」：缓存的是一个 ObjectFactory ，主要用来去生成原始对象进行了 AOP之后得到的「代理对象」，在每个 Bean 的生成过程中，都会提前暴露一个工厂，这个工厂可能用到，也可能用不到，如果没有出现循环依赖依赖本 bean，那么这个工厂无用，本 bean 按照自己的生命周期执行，执行完后直接把本 bean 放入 singletonObjects 中即可，如果出现了循环依赖依赖了本 bean，则另外那个 bean 执行 ObjectFactory 提交得到一个 AOP 之后的代理对象（如果有 AOP 的话，如果无需 AOP ，则直接得到一个原始对象）。
+
+
+
+## 说人话
+
+三级缓存：singletonFactories是个工厂
+
+如果出现循环依赖，A需要B，B需要A，B调用三级缓存中A的工厂的getEarlyBeanReference方法
+
+如果Spring判断A后续不会有任何代理，则直接把A的原始引用给出去，如果判断A后续会有代理，则提前生成一个A的代理类，并且把这个A的代理类放入二级缓存，然后给B用。如此A、B均可完成初始化
+
+提前生成的代理类A就已经走完了A全部的代理逻辑
+
+Spring 使用的是 组合拦截链（责任链）模式：代理类构建时就将所有拦截器封装成一个 MethodInterceptor 链。
+
+所以必须一次性识别出所有的切面并创建代理对象。否则就得重新生成新代理类。
