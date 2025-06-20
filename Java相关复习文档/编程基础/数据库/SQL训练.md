@@ -541,7 +541,83 @@ for(int i=0;i<A.length;i++) {   if(exists(A[i].id) {  //执行select 1 from B b 
 
 **当A表数据与B表数据一样大时,in与exists效率差不多,可任选一个使用.**
 
-## not in 和not exists
+## **IN 和 EXISTS 的区别**
 
-​	**如果查询语句使用了not in 那么内外表都进行全表扫描，没有用到索引；而not extsts 的子查询依然能用到表上的索引。所以无论那个表大，用not exists都比not in要快**。
+### **基本语义**
 
+- **IN**：检查某个值是否在一个给定的列表（或子查询返回的结果集）中。
+
+```
+SELECT * FROM emp WHERE deptno IN (SELECT deptno FROM dept WHERE loc = 'NEW YORK');
+```
+
+- **EXISTS**：判断子查询是否返回行，返回 true/false。
+
+```
+SELECT * FROM emp e WHERE EXISTS (SELECT 1 FROM dept d WHERE d.loc = 'NEW YORK' AND e.deptno = d.deptno);
+```
+
+### **处理机制**
+
+- **IN**：先执行子查询，生成结果集，然后把外层值和结果集进行匹配（通常用哈希表/二叉树优化）。
+- **EXISTS**：外层表的每一行，都会去执行子查询，子查询只要返回行就算匹配成功。
+
+### 性能差异
+
+- 如果**外层表小，内层表大**，通常 EXISTS 性能好，因为它只需要匹配到一行就退出。
+- 如果**内层表小，外层表大**，通常 IN 更合适。
+- **当子查询结果很大**时，EXISTS 可能比 IN 快。
+- **当子查询结果很小**时，IN 通常更高效。
+
+### 空值影响
+
+- IN 遇到空值（NULL）时，匹配行为可能受到影响（如 IN (1, NULL)），而 EXISTS 不受 NULL 影响。
+
+**总结**
+
+- 外层表小 + 内层表大 → EXISTS。
+- 内层表小 → IN。
+- 子查询无空值 → IN 简洁，性能好。
+- 子查询可能返回空值 → EXISTS 稳妥。
+
+## **DISTINCT 和 GROUP BY 的区别**
+
+### **语义**
+
+- **DISTINCT**：用于去除结果集中的重复行。
+
+```
+SELECT DISTINCT deptno FROM emp;
+```
+
+- **GROUP BY**：用于把结果集分组（可配合聚合函数，如 COUNT、SUM 等）。
+
+```
+SELECT deptno, COUNT(*) FROM emp GROUP BY deptno;
+```
+
+### **本质关系**
+
+- 如果 GROUP BY 只对某一列做分组，而不包含聚合函数，效果和 DISTINCT 一样。
+
+```
+-- 下面两个查询效果相同
+SELECT DISTINCT deptno FROM emp;
+SELECT deptno FROM emp GROUP BY deptno;
+```
+
+- 但 GROUP BY 本身是为了分组聚合，而不是简单去重。比如：
+
+```
+SELECT deptno, AVG(sal) FROM emp GROUP BY deptno;
+```
+
+### **性能**
+
+- 对于简单去重，DISTINCT 通常更简洁，数据库优化器会直接使用唯一索引或哈希操作。
+- GROUP BY 需要执行分组操作，涉及到排序或哈希分组。
+
+**总结**
+
+- 只是去重 → DISTINCT 简单高效。
+- 需要分组统计 → GROUP BY 必须。
