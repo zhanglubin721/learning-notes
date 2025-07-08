@@ -695,7 +695,6 @@ Elasticsearch（简称 ES）是一个基于 Lucene 的开源分布式搜索�
     
 *   geo\_point：地理位置坐标（经纬度）
     
-
 *   index：是否索引该字段（true/false）
     
 *   store：是否单独存储该字段（默认只存储在\_source 中）
@@ -1365,7 +1364,7 @@ GET /my_index/_search
     *   支持实时数据变化。
         
     *   适合海量数据分页（如千万级）。
-        
+    
 *   **缺点**：
     
     *   不支持后退（只能向前翻页）。
