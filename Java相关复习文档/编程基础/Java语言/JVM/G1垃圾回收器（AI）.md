@@ -622,11 +622,404 @@ G1 不会**全回收老年代**（那是 Full GC）
 
 ### Full GC
 
+G1 的 Full GC 和它的 Young/Mixed GC 完全不同，是 G1 的**兜底机制**，当其他回收方式无法满足内存需求或回收条件时才触发。
+
+#### **🧨 一句话概括 G1 的 Full GC：**
+
+> **G1 Full GC 是一次单线程、Stop-The-World 的「堆内全量压缩整理」操作，主要用于清理堆碎片、腾出空间，是 G1 的最后防线。**
+
+
+
+#### **📌 G1 Full GC 的触发条件（最常见）：**
+
+1. 🚨 **老年代空间不足，Mixed GC 又无法及时回收**
+2. 🚨 **Humongous 对象分配失败**
+3. 🚨 G1 并发周期来不及完成，Young GC/Mixed GC 来不及回收就撑爆
+4. ⚙️ 显式调用 System.gc()，且未禁用 ExplicitGCInvokesConcurrent
+
+
+
+#### **🧱 Full GC 的阶段流程（G1 方式）**
+
+虽然我们平常说 G1 是 Region 化、并行的，但 **Full GC 是单线程，行为类似 Serial GC，流程如下：**
+
+
+
+**🔹 1. Stop-The-World**
+
+- 暂停所有应用线程和 GC 线程（包括并发标记等任务）
+- G1 的 Full GC 是一次性压缩整个堆，不像 Young/Mixed 那样只处理部分 Region
+
+**🔹 2. GC Root 扫描**
+
+- 和其他 GC 一样，从 GC Roots 出发进行可达性分析（虚拟机栈、本地引用、静态变量等）
+- 对象标记阶段使用的是**标记-压缩算法**
+
+**🔹 3. 标记阶段（Mark）**
+
+- 标记所有存活对象
+- 该阶段是 STW，和 CMS 的初始标记不同，**G1 Full GC 是完全暂停 + 全堆标记**
+
+**🔹 4. 复制 & 压缩阶段（Compaction）**
+
+- 将所有活对象 **复制到新的位置（通常会尽量集中）**
+- 原始 Region 被标记为可回收（Reclaimable）
+- 同时更新所有引用指向的新地址（注意处理对象头中的 Forwarding Pointer）
+
+**🔹 5. 清理阶段**
+
+- 重置堆元数据（如 Remembered Set、Region 状态等）
+- 释放旧对象占用的 Region
+- 更新对象头、类元数据、年龄、引用等
+
+
+
+#### **⚠️ G1 Full GC 的几个特点**
+
+
+
+| **特性**              | **说明**                                                     |
+| --------------------- | ------------------------------------------------------------ |
+| ❌ 并行性低            | 当前（JDK 11~17）默认是**单线程的 Serial Full GC**（耗时长） |
+| ✅ 支持类元数据回收    | 会清理类卸载（如果开启了 -XX:+ClassUnloading）               |
+| ✅ 支持压缩（Compact） | 会整理对象布局，降低碎片率，解决 Humongous 分配失败问题      |
+| ❌ 停顿时间长          | 是 Stop-The-World，**不是 G1 的设计目标，但是兜底保命手段**  |
+
+
+
+#### **🧪 JDK 版本差异（重要！）**
+
+- 🔸 **JDK 8~16**：G1 Full GC 是单线程串行回收
+
+- 🔸 **JDK 17 起**：G1 引入了 **Parallel Full GC**（默认开启），**多个线程并发处理 Full GC**，大大减少停顿时间
+
+  - 开启参数：-XX:+ParallelFullGC
+
+  
+
+#### **🧠 G1 为何要保留 Full GC？**
+
+即便 G1 是 Region 化、并发设计，但依旧无法避免：
+
+- Old Region 中碎片过多，不能放下新对象
+- Humongous 对象分配失败
+- 严重晋升失败 / 预测失败
+
+因此需要 **Full GC 来“兜底清理”**，就像 JVM 的“清场操作”。
+
+
+
+#### **✅ 总结**
+
+| **项目**     | **G1 Full GC**                                    |
+| ------------ | ------------------------------------------------- |
+| 触发时机     | G1 无法腾出足够空间或失败时                       |
+| 回收范围     | 全堆，包括 Eden / Survivor / Old / Humongous      |
+| 是否 STW     | ✅ 是，Stop-The-World                              |
+| 是否压缩     | ✅ 是，整理堆碎片                                  |
+| 是否多线程   | ❌ JDK 8~16 单线程✅ JDK 17+ 并行回收（性能大提升） |
+| 是否频繁触发 | ❌ 应避免触发（调优目标）                          |
+
+
+
+
+
 
 
 ## G1 的回收策略：Garbage-First 算法
 
+**🧭 一句话理解 G1 的 Garbage-First 算法：**
+
+> 在 Mixed GC 中，G1 会从老年代中选择**“垃圾多、活对象少”的 Region（性价比高）**，优先回收它们，从而尽可能在限定的停顿时间内**最大化回收空间，延迟 Full GC 的到来**。
+
+### **一、为什么叫 “Garbage First”**
+
+传统 GC（比如 CMS）在老年代清理时，是整体扫描老年代或基于链表维护的空闲块，容易产生碎片或回收不及时。
+
+而 G1 的做法是：
+
+✅ 把堆划分为很多 Region（区域），并：
+
+1. **对每个 Region 跟踪“回收收益”**（有多少垃圾？）
+2. **根据“收益 / 回收成本”的性价比排序**
+3. **优先选择性价比高的 Region 进行回收**
+
+所以叫 **Garbage-First：先回收最有价值的垃圾**。
+
+
+
+### **二、G1 回收算法的使用时机：Mixed GC 阶段**
+
+G1 的 Young GC 只回收新生代（Eden + Survivor），不涉及老年代。
+
+但 G1 为了避免 Full GC，需要周期性触发 Mixed GC：
+
+→ 即：**在年轻代 GC 的基础上，**从老年代中挑选部分 Region 一起回收。
+
+而在 Mixed GC 中，就会用到 **Garbage-First 算法**。
+
+### **三、算法核心步骤解析**
+
+以下是 **G1 Mixed GC 中 Garbage-First 算法的执行流程**：
+
+**🔹 第 1 步：并发标记（Concurrent Mark）**
+
+- G1 使用 **并发标记阶段** 标记整个堆中存活对象
+- 标记过程中，会为每个老年代 Region 统计：
+
+| **Region ID** | **Region 类型** | **总大小** | **存活对象大小** | **垃圾大小** | **回收比例** |
+| ------------- | --------------- | ---------- | ---------------- | ------------ | ------------ |
+| R1            | Old             | 1MB        | 100KB            | 900KB        | 90%          |
+| R2            | Old             | 1MB        | 800KB            | 200KB        | 20%          |
+
+这张表会用于后续排序。
+
+**🔹 第 2 步：计算回收性价比**
+
+每个 Region 会计算一个指标：
+
+```
+回收收益 = Region 的垃圾大小
+回收成本 = 复制活对象所需时间（估算）
+回收性价比 = 收益 / 成本（类似 ROI）
+```
+
+> 🔧 JVM 内部叫做 GarbageCollectionEfficiency = ReclaimableBytes / ScanCost
+
+**🔹 第 3 步：优先选择高收益 Region**
+
+- G1 会把所有 Old Region 按照回收性价比降序排列
+- 然后从上到下选择若干个 Region，直到：
+  - 满足预估回收目标
+  - 或达到用户设定的 GC 停顿时间目标（-XX:MaxGCPauseMillis）
+
+> ❗ 注意：G1 **不是一次性回收所有老年代 Region**，而是**分多轮 Mixed GC 慢慢处理**，避免 STW 时间过长。
+
+**🔹 第 4 步：STW Mixed GC**
+
+一旦进入 STW Mixed GC：
+
+- 扫描 GC Roots
+- 回收新生代 Region（Eden + Survivor）
+- **复制并回收刚才挑选出的 Old Region**
+- 更新引用关系、对象转发表（Forwarding Pointer）
+
+**🔹 第 5 步：统计 & 调整**
+
+- 回收结束后，G1 会记录：
+  - 实际回收对象大小
+  - 回收耗时
+  - 存活率是否达标
+- 下一轮 Mixed GC 会根据这些反馈重新评估「回收范围」
+
+### **四、Garbage-First 算法的优势**
+
+| **特性**       | **描述**                                               |
+| -------------- | ------------------------------------------------------ |
+| 🔄 增量式回收   | 每轮 GC 只处理部分老年代，避免一次 Full GC             |
+| 🧠 智能回收     | 按性价比选择回收目标，空间利用效率高                   |
+| ⏱ 控制停顿     | 基于 -XX:MaxGCPauseMillis 估算 GC 回收量               |
+| 🧹 延迟 Full GC | 只要 Mixed GC 能跟上老年代增长，Full GC 可长时间不发生 |
+
+**你可以把它类比成“战场优先收尸策略”**
+
+- 有很多战场（Region）
+- 每个战场死的人（垃圾）不同
+- G1 就是：**优先去“尸体最多的战场清理”，别管其他的**
+
+**可视化一个例子**
+
+```
+堆结构：
+
+[Eden][S][S][O1][O2][O3][O4][O5][O6][O7]
+
+其中：
+O1：90% 垃圾
+O2：80% 垃圾
+O3：70% 垃圾
+O4：40%
+O5：20%
+O6：10%
+O7：5%
+
+目标：在 150ms 停顿时间里尽可能多回收老年代
+
+→ G1 会选择 O1 O2 O3 O4 回收
+→ 保留 O5~O7 给下次 Mixed GC
+```
+
+**✅ 总结一句话**
+
+> G1 的 **Garbage-First 算法是在 Mixed GC 阶段，通过“收益 / 成本”评估，挑选性价比最高的老年代 Region 优先回收，控制停顿时间，避免 Full GC。**
+
+
+
 ## 重要参数与调优建议
 
-## 与其他 GC 的核心差异
+### **一、G1 GC 重要参数分类汇总**
 
+**🔹 1. 启用 G1 GC**
+
+```
+-XX:+UseG1GC
+```
+
+**🔹 2. 停顿时间目标（最核心）**
+
+```
+-XX:MaxGCPauseMillis=200   # 默认 200ms，目标最大 GC 停顿时间
+```
+
+- **G1 会尝试在 GC 预算时间内尽量选择合适 Region 回收**
+- 设置太小 → 回收 Region 少 → 老年代增长快 → 容易触发 Full GC
+
+**🔹 3. 堆大小控制（影响 GC 频率）**
+
+```
+-Xms / -Xmx       # 初始堆 / 最大堆
+```
+
+> ✅ G1 在堆使用接近 -Xmx 时回收压力骤增 → 更容易触发 Full GC
+
+> ❗ 建议：**设置 -Xms = -Xmx，避免堆动态扩容的成本**
+
+**🔹 4. 新生代比例（动态调整）**
+
+```
+-XX:NewRatio=N
+```
+
+G1 一般不强制使用这个，而是动态决定，但你可以手动配置 Eden 与 Old 比例（不推荐干预太多）：
+
+```
+-XX:InitiatingHeapOccupancyPercent=45  # 启动 Mixed GC 的老年代占比阈值（默认 45%）
+```
+
+**🔹 5. Region 控制**
+
+```
+-XX:G1HeapRegionSize=8m     # 单个 Region 大小（1M ~ 32M，2 的幂）
+```
+
+- 默认值由堆大小决定（堆越大 Region 越大）
+- 总 Region 数最多 2048 个（可由 -XX:G1HeapRegionSize 控制）
+
+**🔹 6. 并发线程数量**
+
+```
+-XX:ParallelGCThreads=N           # 用于 STW 阶段
+-XX:ConcGCThreads=N               # 用于并发标记阶段
+```
+
+- 一般设置为 CPU 核心数 1/4 ~ 1/2（默认自动估算）
+
+**🔹 7. Humongous 对象处理**
+
+```
+-XX:G1HeapRegionSize=8m  # Humongous 对象 > 1/2 Region 会单独分配整 Region
+-XX:G1HeapWastePercent=5   # Region 剩余垃圾超过多少时可回收
+```
+
+> 🚨 **Humongous 对象无法被移动，只能 Full GC 清理！**
+
+- > 尽量避免频繁创建大对象（如 byte[2MB]）
+
+**🔹 8. Mixed GC 相关**
+
+```
+-XX:InitiatingHeapOccupancyPercent=45   # 启动 Mixed GC 的阈值（默认 45%）
+-XX:G1MixedGCLiveThresholdPercent=85    # Old Region 超过这个存活率将不参与 Mixed GC
+-XX:G1MixedGCCountTarget=8              # 一次并发周期后，最多 Mixed GC 次数（默认 8）
+```
+
+**🔹 9. Full GC 兜底（避免触发）**
+
+```
+-XX:+UseStringDeduplication           # 字符串去重，减少内存
+-XX:+DisableExplicitGC                # 禁止 System.gc() 触发 Full GC
+```
+
+
+
+### **二、G1 调优实战建议（经验总结）**
+
+#### **✅ 1. 保持目标 GC 停顿时间“合理”**
+
+- -XX:MaxGCPauseMillis=200 是平衡吞吐和响应的默认值
+
+- 如果你对 **低延迟有强烈要求**（如游戏、实时交易）可以设置为 50~100ms
+
+  > 注意：G1 不是实时 GC，太低目标可能无法达成
+
+![image-20250724145901487](image/image-20250724145901487.png)
+
+
+
+#### **✅ 2. 设置固定堆大小，避免动态扩容**
+
+```
+-Xms = -Xmx
+```
+
+- 避免因 GC 太慢导致的 Full GC / OOM
+- G1 更喜欢稳定堆布局以进行 Region 调度
+
+
+
+#### **✅ 3. 合理设置并发线程**
+
+```
+-XX:ParallelGCThreads=8
+-XX:ConcGCThreads=4
+```
+
+- **CPU 核心多时建议明确设置，否则默认策略不总最优**
+- 小机器建议设置少一点，避免卡顿
+
+
+
+#### **✅ 4. 避免 Humongous 对象**
+
+- 多个大数组（如 new byte[3MB]）很容易撑爆 G1 的分配表
+- 尝试切分结构、用堆外内存（如 DirectByteBuffer）
+
+
+
+#### **✅ 5. 定期观察 GC 日志**
+
+开启 GC 日志是调优核心：
+
+```
+-Xlog:gc*,safepoint:file=gc.log:time,uptime,level,tags
+```
+
+关注字段：
+
+| **指标**          | **含义**         |
+| ----------------- | ---------------- |
+| Pause Time        | 是否达成目标停顿 |
+| Young GC 间隔     | 是否太频繁       |
+| Mixed GC 是否足够 | Old 区增长快不快 |
+| Full GC 是否偶发  | 判断是否调优失败 |
+
+
+
+### **三、调优目标 VS 场景匹配**
+
+| **目标**             | **建议设置**                                  |
+| -------------------- | --------------------------------------------- |
+| 🌐 Web 应用（低延迟） | MaxGCPauseMillis=100，关注 STW 时间           |
+| 🧠 AI / 大内存服务    | G1HeapRegionSize=16m，调高 MixedGCCountTarget |
+| 🎮 游戏服务器         | 限制 Humongous 对象，GC 线程手动设定          |
+| 🧮 高吞吐批处理       | MaxGCPauseMillis=500~1000，更多并发线程       |
+
+**✅ 总结**
+
+| **参数类别** | **建议重点**                                       |
+| ------------ | -------------------------------------------------- |
+| 停顿控制     | MaxGCPauseMillis 是核心目标                        |
+| 内存布局     | -Xms = -Xmx, Region 大小可控                       |
+| 并发线程     | ParallelGCThreads, ConcGCThreads                   |
+| Mixed 策略   | InitiatingHeapOccupancyPercent, MixedGCCountTarget |
+| Full GC 避免 | 合理使用 StringDeduplication, 禁用 System.gc()     |
