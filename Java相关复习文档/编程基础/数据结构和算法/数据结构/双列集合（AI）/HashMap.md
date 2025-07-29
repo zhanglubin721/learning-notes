@@ -103,7 +103,7 @@ static class Node<K,V> implements Map.Entry<K,V> {
 }
 ```
 
-1.只持有下一个Node的引用，如果是链表的话就只能单向遍历
+1.只持有下一个Node的引用，如果是链表的话就只能单向遍历，红黑树节点TreeNode有parent、left、right、prev，因为需要快速进行父子旋转、插入等操作
 
 2.Node里面存储了hash值，不需要每次都重新计算hash值
 
