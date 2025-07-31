@@ -104,6 +104,24 @@ private void siftDown(int k, E x) {
 
 
 
+### 比较
+
+```java
+//PriorityQueue有一个比较器的成员变量
+private final Comparator<? super E> comparator;
+
+@SuppressWarnings("unchecked")
+private int compare(Object k1, Object k2) {
+    return comparator == null
+        ? ((Comparable<? super E>) k1).compareTo((E) k2)
+        : comparator.compare((E) k1, (E) k2);
+}
+```
+
+如果使用的是传了比较器的构造函数，那么这里就会用传进来的比较器进行比较，否则就要求元素必须实现 Comparable 接口
+
+
+
 ## 构造函数
 
 ```java
@@ -141,3 +159,66 @@ PriorityQueue<CacheItem> pq = new PriorityQueue<>(
 );
 ```
 
+
+
+## 知识补充
+
+### Comparator比较器
+
+#### 一、Comparator的作用
+
+Comparator<T> 是一个**函数式接口**，定义在 java.util 包中。它的主要作用是：
+
+> **为没有自然顺序的对象或者你想自定义排序规则的对象提供比较方法。**
+
+
+
+#### **二、核心方法**
+
+```
+int compare(T o1, T o2);
+```
+
+
+
+- 返回负数：表示 o1 < o2
+- 返回零：表示 o1 == o2
+- 返回正数：表示 o1 > o2
+
+例如：
+
+```
+Comparator<Integer> desc = (a, b) -> b - a;
+```
+
+这是一个按照**降序排列整数**的比较器。
+
+
+
+#### **三、应用场景**
+
+- PriorityQueue：构造时传入 Comparator 改变默认的排序规则（最小堆 → 最大堆）
+- Collections.sort(List, Comparator)
+- Stream.sorted(Comparator)
+- TreeSet, TreeMap 的自定义排序方式
+
+
+
+#### 四、和 Comparable的区别
+
+| **特点**       | Comparable                 | Comparator               |
+| -------------- | -------------------------- | ------------------------ |
+| 定义位置       | 实体类本身实现 compareTo() | 外部定义一个比较器       |
+| 接口方法       | int compareTo(T o)         | int compare(T o1, T o2)  |
+| 是否能多种排序 | 只能有一种自然顺序         | 可以定义多个不同排序方式 |
+| 修改权限       | 需要修改类源码             | 不需要修改类源码         |
+
+
+
+如你写的：
+
+```
+PriorityQueue<Integer> maxHeap = new PriorityQueue<>((a, b) -> b - a);
+```
+
+这里的 (a, b) -> b - a 实际就是创建了一个实现了 Comparator<Integer> 接口的匿名内部类，传给了 PriorityQueue 的构造函数。
