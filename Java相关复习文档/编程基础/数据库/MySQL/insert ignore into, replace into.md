@@ -81,3 +81,7 @@ select * from testtb; //数据变为1,"aa",12
 ```
 
  
+
+## replace into数据冲突
+
+![image-20250804170326297](image/image-20250804170326297.png)
