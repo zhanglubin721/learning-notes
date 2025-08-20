@@ -142,6 +142,53 @@ JOIN articles a ON a.id = t.id;
 
 
 
+#### **SQL 示例 2**
+
+```sql
+SELECT id, amount, created_at
+FROM orders
+WHERE user_id = 100
+  AND created_at < :last_created_at
+ORDER BY created_at DESC
+LIMIT 20;
+```
+
+
+
+#### **问题分析 2**
+
+- 因为是根据created_at 进行排序并分页，如果出现多条created_at 相同的，由于查询条件AND created_at < :last_created_at 会导致有数据被遗漏
+
+
+
+#### **修复方案 2**
+
+需求只要求按照创建时间排序，我们则按照创建时间、唯一主键联合排序，这样就能规避上述问题，因为只要求按创建时间排序，没说如果创建时间一直会怎么样，所以这是一种取巧的办法
+
+**排序里 + WHERE 里都要使用 (created_at, id) 这个组合。**
+
+```sql
+-- 第 1 页（起始，不带游标）
+SELECT id, amount, created_at
+FROM orders
+WHERE user_id = 100
+ORDER BY created_at DESC, id DESC
+LIMIT 20;
+
+-- 下一页（带上上一页最后一行的 (last_created_at, last_id)）
+SELECT id, amount, created_at
+FROM orders
+WHERE user_id = 100
+  AND (created_at, id) < (:last_created_at, :last_id)
+ORDER BY created_at DESC, id DESC
+LIMIT 20;
+```
+
+- 有**并列**（同一 created_at）时，会再按 id DESC 严格排序；
+- 续页条件用**元组比较** (a,b) < (x,y)，等价于 (a<x) OR (a=x AND b<y)，不会丢/重。
+
+
+
 ### **案例四：OR 查询未优化，导致多次全表扫描**
 
 
