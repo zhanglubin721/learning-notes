@@ -1,4 +1,4 @@
-### **第十一题（高频索引优化场景）**：
+### **高频索引优化场景**：
 
 在一张电商订单表 orders 上有如下索引：
 
@@ -70,7 +70,7 @@ CREATE INDEX idx_status_created ON orders(status, created_at);
 
 
 
-### **第十二题：为什么 SELECT COUNT(\*) 在 InnoDB 下会很慢，以及优化方法**
+### **为什么 SELECT COUNT(\*) 在 InnoDB 下会很慢，以及优化方法**
 
 
 
